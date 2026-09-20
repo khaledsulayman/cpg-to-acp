@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CareWright</title>
-<meta name="description" content="CareWright is an open source system that reads the documents that define good care and turns them into an actionable care plan for a specific patient that a clinician reviews, edits, and approves. Built by Red Hat, Apache 2.0.">
-<meta property="og:title" content="CareWright">
-<meta property="og:description" content="CareWright: guidelines to quality care plans. Clinical guidelines, payer policies, and quality rules, drafted into a care plan for one patient. Every line traces back to its source, and a clinician approves every plan.">
+<title>Carewright</title>
+<meta name="description" content="Carewright is an open source system that reads the documents that define good care and turns them into an actionable care plan for a specific patient that a clinician reviews, edits, and approves. Built by Red Hat, Apache 2.0.">
+<meta property="og:title" content="Carewright">
+<meta property="og:description" content="Carewright: guidelines to quality care plans. Clinical guidelines, payer policies, and quality rules, drafted into a care plan for one patient. Every line traces back to its source, and a clinician approves every plan.">
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%2314303B'/%3E%3Cpath d='M8 10h16M8 16h16M8 22h10' stroke='%23F5F8F7' stroke-width='3' stroke-linecap='round'/%3E%3Ccircle cx='24' cy='22' r='3' fill='%23C7392F'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -117,8 +117,9 @@
 
   /* Hero */
   .hero { padding-block: clamp(3rem, 8vw, 6rem) clamp(2.5rem, 6vw, 4.5rem); border-top: 0; }
-  .hero .wrap { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: center; }
-  .hero-copy { display: grid; gap: 1.4rem; }
+  .hero .wrap { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); grid-template-areas: "copy illustration" "partners partners"; gap: 2.5rem clamp(2rem, 5vw, 4.5rem); align-items: center; }
+  .hero-copy { grid-area: copy; display: grid; gap: 1.4rem; min-width: 0; }
+  .hero-illustration { grid-area: illustration; min-width: 0; }
   .status { display: inline-flex; align-items: center; gap: 0.5rem; width: fit-content; font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent-soft); padding: 0.3rem 0.7rem; border-radius: 999px; }
   .status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
   .cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
@@ -128,7 +129,23 @@
   .btn-ghost { border-color: var(--line-strong); color: var(--ink); }
   .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
   .btn svg { width: 16px; height: 16px; fill: currentColor; }
-  @media (max-width: 860px) { .hero .wrap { grid-template-columns: 1fr; } }
+  @media (max-width: 860px) { .hero .wrap { grid-template-columns: 1fr; grid-template-areas: "copy" "partners" "illustration"; } }
+
+  /* Project partners: keep the introduction first, including on small screens. */
+  .project-partners { grid-area: partners; display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 2rem; padding-block: 1.25rem 0; }
+  .project-partners[hidden] { display: none; }
+  .project-partners h2 { font-weight: 500; line-height: 1.4; }
+  .partner-list { display: flex; flex-wrap: wrap; gap: 0.75rem; list-style: none; padding: 0; margin: 0; }
+  .partner-list li { width: 12rem; }
+  .partner-card { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 0.5rem; height: 100%; min-height: 5.5rem; padding: 1rem 1.25rem; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: #14303B; text-decoration: none; text-align: center; }
+  a.partner-card:hover { border-color: var(--accent); color: #14303B; }
+  .partner-card img { display: block; width: 100%; height: 2.75rem; object-fit: contain; }
+  .partner-name { font-size: 0.9rem; font-weight: 500; overflow-wrap: anywhere; }
+  @media (max-width: 560px) {
+    .partner-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    .partner-list li { width: auto; min-width: 0; }
+    .partner-card { padding: 1rem; }
+  }
 
   /* Decision table motif */
   .dmn { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; box-shadow: 0 20px 50px -30px rgba(20,48,59,0.35); }
@@ -308,9 +325,9 @@
 
 <nav class="nav">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="CareWright home">
+    <a class="brand" href="#top" aria-label="Carewright home">
       <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="#14303B"/><path d="M8 10h16M8 16h16M8 22h10" stroke="#F5F8F7" stroke-width="3" stroke-linecap="round"/><circle cx="24" cy="22" r="3" fill="#C7392F"/></svg>
-      CareWright
+      Carewright
     </a>
     <ul>
       <li><a href="#problem">The problem</a></li>
@@ -318,7 +335,7 @@
       <li><a href="#faq">From where you sit</a></li>
       <li><a href="#partner">Partner with us</a></li>
       <li><a href="#engineers">For engineers</a></li>
-      <li class="keep"><a class="gh" href="https://github.com/samschifman/cpg-to-acp"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a></li>
+      <li class="keep"><a class="gh" href="https://github.com/samschifman/carewright"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>GitHub</a></li>
     </ul>
   </div>
 </nav>
@@ -328,7 +345,7 @@
     <div class="hero-copy">
       <span class="status">For providers, payers, and quality regulators</span>
       <h1>Guidelines to quality care plans.</h1>
-      <p class="lede">Clinical practice guidelines, payer coverage policies, and quality requirements all describe what good care looks like, and all of them were written to be read, not run. CareWright reads them, drafts a care plan for a specific patient, and puts a clinician in charge of approving it. Every line in the plan traces back to the guideline or policy it came from.</p>
+      <p class="lede">Clinical practice guidelines, payer coverage policies, and quality requirements all describe what good care looks like, and all of them were written to be read, not run. Carewright reads them, drafts a care plan for a specific patient, and puts a clinician in charge of approving it. Every line in the plan traces back to the guideline or policy it came from.</p>
       <p class="lede small">Built by Red Hat. Runs on Red Hat OpenShift AI in your environment. Apache 2.0 licensed.</p>
       <div class="cta">
         <a class="btn btn-primary" href="#partner">Become a development partner</a>
@@ -336,7 +353,12 @@
       </div>
     </div>
 
-    <div>
+    <section class="project-partners" id="partners" aria-labelledby="partners-heading" hidden>
+      <h2 class="eyebrow" id="partners-heading">Project partners</h2>
+      <ul class="partner-list" id="partner-list" role="list"></ul>
+    </section>
+
+    <div class="hero-illustration">
       <div class="dmn">
         <div class="dmn-title"><span><strong>Decision table</strong> · Hypertension pathway</span><span>extracted from the guideline</span></div>
         <div class="dmn-wrap">
@@ -385,7 +407,7 @@
   <div class="wrap">
     <div class="sec-head">
       <span class="eyebrow">How it works</span>
-      <h2>CareWright does the reading. People make the decisions.</h2>
+      <h2>Carewright does the reading. People make the decisions.</h2>
     </div>
 
     <div class="flow">
@@ -592,7 +614,7 @@
         <p>That means a modest amount of informaticist time to review what the system extracts from real guidelines and your own protocols, clinicians willing to put drafts in front of real or realistic cases and tell us what's wrong, and a seat at the table for what automation should look like.</p>
         <p>We bring the engineers, the platform, and an open source project you can see all of. You would be shaping a tool that knows how your organization practices medicine, rather than buying one that doesn't.</p>
         <div class="cta" style="margin-top:0.5rem">
-          <a class="btn btn-primary" href="https://github.com/samschifman/cpg-to-acp/issues">Start the conversation on GitHub</a>
+          <a class="btn btn-primary" href="https://github.com/samschifman/carewright/issues">Start the conversation on GitHub</a>
           <a class="btn btn-ghost" href="https://www.youtube.com/playlist?list=PLBrn0oRf1lNM">Watch the intro series</a>
         </div>
       </div>
@@ -621,15 +643,15 @@
     <table class="comp">
       <thead><tr><th>Directory</th><th>Purpose</th><th>Built with</th></tr></thead>
       <tbody>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/cpg-ingester">cpg-ingester/</a></td><td>Parses CPG documents and produces DMN decision tables plus recommendations for the acp-writer's vector store. Includes an upload, progress and human-in-the-loop review UI, and a FastAPI BFF between the UI and SonataFlow/MinIO.</td><td>Docling · PatternFly 6 · React 19 · FastAPI</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/acp-writer">acp-writer/</a></td><td>Composes patient-specific care plans by invoking DMN decision services, retrieving recommendations and integrating FHIR patient data. Outputs FHIR CarePlans and BPMN. Includes the clinician review UI.</td><td>Drools/Kogito · SMART on FHIR</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/automation">automation/</a></td><td>Executes BPMN process definitions produced by the acp-writer. The runtime is pluggable.</td><td>Ansible · SonataFlow</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/mock-EHR">mock-EHR/</a></td><td>Mock EHR for development and demos, with a clinical-facing "CareView EHR" UI and an IPS Viewer SMART app.</td><td>Medplum · FHIR R4 · OAuth</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/platform">platform/</a></td><td>Shared infrastructure services consumed by multiple components. Platform capabilities on OpenShift AI; local equivalents for dev.</td><td>MaaS · MLflow · LiteLLM</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/shared">shared/</a></td><td>Shared contracts and utilities, used sparingly to prevent coupling.</td><td>Python</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/deploy">deploy/</a></td><td>Helm charts per component and the OpenShift install script.</td><td>Helm · OpenShift</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/docs">docs/</a></td><td>User-facing documentation: architecture, security, deployment guides.</td><td>–</td></tr>
-        <tr><td><a href="https://github.com/samschifman/cpg-to-acp/tree/main/dev_docs">dev_docs/</a></td><td>Internal design docs, spikes and the project plan. Point-in-time references.</td><td>–</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/cpg-ingester">cpg-ingester/</a></td><td>Parses CPG documents and produces DMN decision tables plus recommendations for the acp-writer's vector store. Includes an upload, progress and human-in-the-loop review UI, and a FastAPI BFF between the UI and SonataFlow/MinIO.</td><td>Docling · PatternFly 6 · React 19 · FastAPI</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/acp-writer">acp-writer/</a></td><td>Composes patient-specific care plans by invoking DMN decision services, retrieving recommendations and integrating FHIR patient data. Outputs FHIR CarePlans and BPMN. Includes the clinician review UI.</td><td>Drools/Kogito · SMART on FHIR</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/automation">automation/</a></td><td>Executes BPMN process definitions produced by the acp-writer. The runtime is pluggable.</td><td>Ansible · SonataFlow</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/mock-EHR">mock-EHR/</a></td><td>Mock EHR for development and demos, with a clinical-facing "CareView EHR" UI and an IPS Viewer SMART app.</td><td>Medplum · FHIR R4 · OAuth</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/platform">platform/</a></td><td>Shared infrastructure services consumed by multiple components. Platform capabilities on OpenShift AI; local equivalents for dev.</td><td>MaaS · MLflow · LiteLLM</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/shared">shared/</a></td><td>Shared contracts and utilities, used sparingly to prevent coupling.</td><td>Python</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/deploy">deploy/</a></td><td>Helm charts per component and the OpenShift install script.</td><td>Helm · OpenShift</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/docs">docs/</a></td><td>User-facing documentation: architecture, security, deployment guides.</td><td>–</td></tr>
+        <tr><td><a href="https://github.com/samschifman/carewright/tree/main/dev_docs">dev_docs/</a></td><td>Internal design docs, spikes and the project plan. Point-in-time references.</td><td>–</td></tr>
       </tbody>
     </table>
     </div>
@@ -666,14 +688,14 @@
       <h2>Design documentation</h2>
     </div>
     <div class="docs">
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/adversarial-review-pattern.md"><span class="doc-t">Adversarial Review Pattern</span><span class="arrow">→</span><span class="doc-d">How agents check agents: independent review before outputs cross a pipeline boundary.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/ai-transparency.md"><span class="doc-t">AI Transparency on FHIR</span><span class="arrow">→</span><span class="doc-d">Labelling and tracing AI-produced care plans with the HL7 AI Transparency IG; plan-level conflicts as Provenance.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/clinical-data-qa.md"><span class="doc-t">Clinical Data Question Answering</span><span class="arrow">→</span><span class="doc-d">Extracting DMN inputs from FHIR IPS bundles: layered resolution, temporal primitives, benchmarking.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/sonataflow-orchestration.md"><span class="doc-t">Workflow Orchestration with SonataFlow</span><span class="arrow">→</span><span class="doc-d">Orchestrating the pipelines, async callback patterns and MinIO-based state transfer.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/openshell-agent-security.md"><span class="doc-t">Agent Security with OpenShell</span><span class="arrow">→</span><span class="doc-d">Per-agent sandboxes and security policies on OpenShift.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/mcp-gateway-tool-governance.md"><span class="doc-t">Tool Governance with MCP Gateway</span><span class="arrow">→</span><span class="doc-d">Governing agent tool access with aggregation, prefixing and virtual servers.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/blob/main/docs/api-gateway.md"><span class="doc-t">API Gateway</span><span class="arrow">→</span><span class="doc-d">One URL in front of pod-split services with path-based routing.</span></a>
-      <a class="doc" href="https://github.com/samschifman/cpg-to-acp/tree/main/dev_docs"><span class="doc-t">Design docs, spikes &amp; project plan</span><span class="arrow">→</span><span class="doc-d">Internal development documents in <code>dev_docs/</code>. Point-in-time references.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/adversarial-review-pattern.md"><span class="doc-t">Adversarial Review Pattern</span><span class="arrow">→</span><span class="doc-d">How agents check agents: independent review before outputs cross a pipeline boundary.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/ai-transparency.md"><span class="doc-t">AI Transparency on FHIR</span><span class="arrow">→</span><span class="doc-d">Labelling and tracing AI-produced care plans with the HL7 AI Transparency IG; plan-level conflicts as Provenance.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/clinical-data-qa.md"><span class="doc-t">Clinical Data Question Answering</span><span class="arrow">→</span><span class="doc-d">Extracting DMN inputs from FHIR IPS bundles: layered resolution, temporal primitives, benchmarking.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/sonataflow-orchestration.md"><span class="doc-t">Workflow Orchestration with SonataFlow</span><span class="arrow">→</span><span class="doc-d">Orchestrating the pipelines, async callback patterns and MinIO-based state transfer.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/openshell-agent-security.md"><span class="doc-t">Agent Security with OpenShell</span><span class="arrow">→</span><span class="doc-d">Per-agent sandboxes and security policies on OpenShift.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/mcp-gateway-tool-governance.md"><span class="doc-t">Tool Governance with MCP Gateway</span><span class="arrow">→</span><span class="doc-d">Governing agent tool access with aggregation, prefixing and virtual servers.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/blob/main/docs/api-gateway.md"><span class="doc-t">API Gateway</span><span class="arrow">→</span><span class="doc-d">One URL in front of pod-split services with path-based routing.</span></a>
+      <a class="doc" href="https://github.com/samschifman/carewright/tree/main/dev_docs"><span class="doc-t">Design docs, spikes &amp; project plan</span><span class="arrow">→</span><span class="doc-d">Internal development documents in <code>dev_docs/</code>. Point-in-time references.</span></a>
     </div>
   </div>
 </section>
@@ -701,7 +723,7 @@
           <span>Python 3.11+</span>
           <span>OpenAI API key for LLM-driven extraction</span>
         </div>
-        <p style="margin-top:1.5rem;font-size:0.92rem;color:var(--ink-2)">Full walkthrough in the <a href="https://github.com/samschifman/cpg-to-acp#getting-started">README</a>. Every step is traced in MLflow when running locally.</p>
+        <p style="margin-top:1.5rem;font-size:0.92rem;color:var(--ink-2)">Full walkthrough in the <a href="https://github.com/samschifman/carewright#getting-started">README</a>. Every step is traced in MLflow when running locally.</p>
       </div>
       <div class="cmd">
         <div><div class="lbl">Parse and extract</div>
@@ -723,7 +745,7 @@ curl -X POST http://localhost:8082/api/v1/careplans \
   -H "Content-Type: application/fhir+json" \
   -d @mock-EHR/data/patient-bundle-lifestyle.json</code></pre></div>
         <div><div class="lbl">Or deploy to OpenShift</div>
-<pre><code>NAMESPACE=my-cpg-to-acp ./deploy/install.sh</code></pre></div>
+<pre><code>NAMESPACE=my-carewright ./deploy/install.sh</code></pre></div>
       </div>
     </div>
   </div>
@@ -745,10 +767,11 @@ curl -X POST http://localhost:8082/api/v1/careplans \
 
 <footer>
   <div class="wrap">
-    <span>CareWright · Actionable Care Plans · Built by Red Hat · Apache License 2.0</span>
-    <span><a href="https://github.com/samschifman/cpg-to-acp">Repository</a> · <a href="https://github.com/samschifman/cpg-to-acp/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="https://github.com/samschifman/cpg-to-acp/blob/main/SECURITY.md">Security</a> · <a href="https://www.youtube.com/playlist?list=PLBrn0oRf1lNM">YouTube playlist</a></span>
+    <span>Carewright · Actionable Care Plans · Built by Red Hat · Apache License 2.0</span>
+    <span><a href="https://github.com/samschifman/carewright">Repository</a> · <a href="https://github.com/samschifman/carewright/blob/main/CONTRIBUTING.md">Contributing</a> · <a href="https://github.com/samschifman/carewright/blob/main/SECURITY.md">Security</a> · <a href="https://www.youtube.com/playlist?list=PLBrn0oRf1lNM">YouTube playlist</a></span>
   </div>
 </footer>
 
+<script src="partners.js" defer></script>
 </body>
 </html>

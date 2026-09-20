@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Red Hat",
+    "logo": "assets/partners/red-hat.svg",
+    "url": "https://www.redhat.com/",
+    "showName": false
+  },
+  {
+    "name": "Trisotech",
+    "logo": "assets/partners/trisotech.png",
+    "url": "https://www.trisotech.com/",
+    "showName": false
+  }
+]
