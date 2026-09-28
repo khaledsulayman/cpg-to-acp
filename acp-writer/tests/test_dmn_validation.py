@@ -90,6 +90,26 @@ class TestDecisionEngineDeploymentValidation:
         assert response.json() == VALIDATION_OK
         assert _dynamic_models == {}
 
+    @patch("acp_writer.services.decision_engine._validate_dmn_with_engine", return_value=VALIDATION_OK)
+    def test_pods_mode_source_cpg_collision_requires_replace(self, _validate):
+        first = decision_engine_client.post(
+            "/api/v1/decisions/models?source_cpg=CPG-X", content=DMN)
+        assert first.status_code == 201
+        assert first.json()["source_cpg"] == "CPG-X"
+
+        collision = decision_engine_client.post(
+            "/api/v1/decisions/models?source_cpg=CPG-Y", content=DMN)
+        assert collision.status_code == 409
+        assert collision.json()["existing_source_cpg"] == "CPG-X"
+        assert collision.json()["source_cpg"] == "CPG-Y"
+
+        replaced = decision_engine_client.post(
+            "/api/v1/decisions/models?source_cpg=CPG-Y&replace=true", content=DMN)
+        assert replaced.status_code == 201
+        assert replaced.json()["source_cpg"] == "CPG-Y"
+        stored_models = decision_engine_client.get("/api/v1/decisions/models").json()
+        assert stored_models[0]["source_cpg"] == "CPG-Y"
+
 
 class TestEvaluationErrors:
     def setup_method(self):

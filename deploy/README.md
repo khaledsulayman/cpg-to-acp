@@ -418,9 +418,14 @@ After cpg-ingester publishes artifacts (DMN models, recommendations, guideline m
 ```bash
 ./deploy/load-published-artifacts.sh --config deploy/config/cluster.env <cpg-id>
 # Example: ./deploy/load-published-artifacts.sh --config deploy/config/cluster.env UNK-HTN-UNDATED
+# Add --replace only when intentionally replacing a same-id DMN model owned by another CPG.
+# ./deploy/load-published-artifacts.sh --config deploy/config/cluster.env --replace <cpg-id>
 ```
 
 This loads the guideline metadata, recommendations (into the vector store), and DMN models (into the decision engine) from `cpg-artifacts/published/<cpg-id>/` in MinIO.
+The supplied CPG id is sent as the DMN models' `source_cpg`. If a model id is already owned by a different CPG, the decision engine rejects the upload with HTTP 409 unless `--replace` is supplied. The loader stops on any non-2xx response and reports the number of DMN models that were successfully loaded.
+
+Run the cluster-free loader tests with `bash deploy/tests/test-load-published-artifacts.sh`.
 
 ## SonataFlow Workflow Configuration
 
