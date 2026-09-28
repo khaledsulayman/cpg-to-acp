@@ -96,6 +96,14 @@ corpus (skips the no-golden `real_corpora` directories).
 | **compile_pass_rate** | Fraction whose DMN actually compiles in the decision service. |
 | **l0_pass_but_compile_fail** | Passed syntax validation but failed to compile — the gap the validator ladder must close. |
 
+Each entry in the `decisions` report corresponds to a golden decision; golden
+decisions with no generated match remain there with their `missing_rules`.
+Unpaired generated decisions are listed separately in `extra_decisions` with
+their `name` and `rule_count`. Extra rules contribute to
+`generated_rule_count` and lower structural precision. Each extra decision is
+also counted as non-exact, so `decision_exact_rate` divides exact golden
+decisions by the number of golden decisions plus extra generated decisions.
+
 ### Reviewer suite (clean + seeded defects)
 
 | Metric | Meaning |

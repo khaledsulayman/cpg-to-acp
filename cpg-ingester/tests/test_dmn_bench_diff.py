@@ -1,6 +1,7 @@
 """Tests for the semantic golden-diff tool and its DMN model parser."""
 
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,31 @@ def _swap_first_two_input_columns(xml: str) -> str:
         rule.remove(entries[1])
         rule.insert(0, entries[1])
         rule.insert(1, entries[0])
+    return etree.tostring(root, encoding="unicode")
+
+
+def _append_decision(xml: str, source_xml: str, *, name: str | None = None,
+                     without_rules: bool = False) -> str:
+    root = etree.fromstring(xml.encode("utf-8"))
+    source_root = etree.fromstring(source_xml.encode("utf-8"))
+    source_decision = next(
+        element for element in source_root.iter()
+        if isinstance(element.tag, str) and element.tag.rsplit("}", 1)[-1] == "decision"
+    )
+    decision = deepcopy(source_decision)
+    if name is not None:
+        decision.set("name", name)
+    if without_rules:
+        table = next(
+            element for element in decision.iter()
+            if isinstance(element.tag, str) and element.tag.rsplit("}", 1)[-1] == "decisionTable"
+        )
+        for rule in [
+            element for element in table
+            if isinstance(element.tag, str) and element.tag.rsplit("}", 1)[-1] == "rule"
+        ]:
+            table.remove(rule)
+    root.append(decision)
     return etree.tostring(root, encoding="unicode")
 
 
@@ -115,6 +141,57 @@ class TestDiffModels:
         assert report["structural_recall"] == 1.0
         assert report["structural_precision"] == 1.0
         assert report["threshold_exactness"] == 1.0
+        assert report["decision_exact_rate"] == 1.0
+        assert report["extra_decisions"] == []
+
+    def test_extra_generated_decision_with_rules_is_reported_and_scored(self):
+        generated = _append_decision(
+            TREATMENT, MONITORING, name="Unrelated Decision",
+        )
+        report = diff_models(TREATMENT, generated)
+        extra_rule_count = len(parse_dmn(MONITORING).decisions[0].rules)
+
+        assert report["extra_decisions"] == [{
+            "name": "Unrelated Decision",
+            "rule_count": extra_rule_count,
+        }]
+        assert report["structural_precision"] < 1.0
+        assert report["structural_f1"] < 1.0
+        assert report["decision_exact_rate"] == 0.5
+        assert report["generated_rule_count"] == (
+            sum(decision["generated_rule_count"] for decision in report["decisions"])
+            + sum(decision["rule_count"] for decision in report["extra_decisions"])
+        )
+
+    def test_extra_generated_decision_without_rules_only_changes_exact_rate(self):
+        generated = _append_decision(
+            TREATMENT, MONITORING, name="Unrelated Decision", without_rules=True,
+        )
+        report = diff_models(TREATMENT, generated)
+        identical = diff_models(TREATMENT, TREATMENT)
+
+        assert report["extra_decisions"] == [{
+            "name": "Unrelated Decision",
+            "rule_count": 0,
+        }]
+        assert report["structural_f1"] == identical["structural_f1"]
+        assert report["decision_exact_rate"] == 0.5
+
+    def test_name_match_is_consumed_before_positional_fallback(self):
+        golden = _append_decision(TREATMENT, MONITORING)
+        generated = _append_decision(
+            MONITORING, TREATMENT, name="",
+        )
+        report = diff_models(golden, generated)
+
+        assert report["extra_decisions"] == []
+        assert [decision["generated_rule_count"] for decision in report["decisions"]] == [
+            len(parse_dmn(TREATMENT).decisions[0].rules),
+            len(parse_dmn(MONITORING).decisions[0].rules),
+        ]
+        assert report["generated_rule_count"] == sum(
+            decision["generated_rule_count"] for decision in report["decisions"]
+        )
 
     def test_serialized_differently_still_one(self):
         # The diff is namespace-agnostic: a legacy DMN 1.3 serialization of the

@@ -311,14 +311,40 @@ def diff_models(golden_xml: str, generated_xml: str,
                 f"assumption rule ids not found in {decision_name}: {sorted(unknown)}"
             )
 
-    gen_by_name = {d.name.lower(): d for d in generated.decisions}
+    generated_names = [_norm_ws(d.name).lower() for d in generated.decisions]
+    matched_generated: list[int | None] = [None] * len(golden.decisions)
+    used_generated: set[int] = set()
+
+    # First pair by normalized decision name. Track indexes so duplicate names
+    # are consumed one-to-one instead of overwriting one another in a dict.
+    for golden_index, golden_decision in enumerate(golden.decisions):
+        normalized_name = _norm_ws(golden_decision.name).lower()
+        if not normalized_name:
+            continue
+        generated_index = next((index for index, candidate in enumerate(generated_names)
+                                if index not in used_generated and candidate == normalized_name), None)
+        if generated_index is not None:
+            matched_generated[golden_index] = generated_index
+            used_generated.add(generated_index)
+
+    # Pair remaining golden decisions positionally where possible, using only
+    # generated indexes not already consumed by a name match.
+    remaining_generated = [index for index in range(len(generated.decisions))
+                           if index not in used_generated]
+    for golden_index in range(len(golden.decisions)):
+        if matched_generated[golden_index] is not None or not remaining_generated:
+            continue
+        generated_index = (
+            golden_index if golden_index in remaining_generated else remaining_generated[0]
+        )
+        matched_generated[golden_index] = generated_index
+        used_generated.add(generated_index)
+        remaining_generated.remove(generated_index)
+
     decision_diffs = []
-    used_names = set()
-    for i, gd in enumerate(golden.decisions):
-        match = gen_by_name.get(gd.name.lower())
-        if match is None and i < len(generated.decisions):
-            match = generated.decisions[i]
-        if match is None:
+    for golden_index, gd in enumerate(golden.decisions):
+        generated_index = matched_generated[golden_index]
+        if generated_index is None:
             decision_diffs.append(DecisionDiff(
                 decision_name=gd.name, inputs_match=False, outputs_match=False,
                 hit_policy_match=False, golden_rule_count=len(gd.rules),
@@ -334,12 +360,20 @@ def diff_models(golden_xml: str, generated_xml: str,
                 ],
             ))
             continue
-        used_names.add(match.name.lower())
-        decision_diffs.append(diff_decision(gd, match,
+        decision_diffs.append(diff_decision(gd, generated.decisions[generated_index],
                                             assumption_rule_ids.get(gd.name, set())))
 
+    extra_decisions = [
+        {"name": decision.name, "rule_count": len(decision.rules)}
+        for index, decision in enumerate(generated.decisions)
+        if index not in used_generated
+    ]
+
     total_golden = sum(d.golden_rule_count - d.assumption_rule_count for d in decision_diffs)
-    total_gen = sum(d.generated_rule_count - d.assumption_rules_matched for d in decision_diffs)
+    total_gen = (
+        sum(d.generated_rule_count - d.assumption_rules_matched for d in decision_diffs)
+        + sum(decision["rule_count"] for decision in extra_decisions)
+    )
     total_matched = sum(d.matched_rules - d.assumption_rules_matched for d in decision_diffs)
     total_exact = sum(d.threshold_exact_rules for d in decision_diffs)
     total_output_exact = sum(d.output_exact_rules for d in decision_diffs)
@@ -357,12 +391,14 @@ def diff_models(golden_xml: str, generated_xml: str,
         "output_exactness": round(total_output_exact / total_matched, 4) if total_matched else 0.0,
         "golden_rule_count": total_golden,
         "generated_rule_count": total_gen,
+        "extra_decisions": extra_decisions,
         "matched_rules": total_matched,
         "assumption_rule_count": sum(d.assumption_rule_count for d in decision_diffs),
         "assumption_rules_matched": sum(d.assumption_rules_matched for d in decision_diffs),
         "decision_exact_rate": round(
-            sum(d.decision_exact for d in decision_diffs) / len(decision_diffs), 4
-        ) if decision_diffs else 0.0,
+            sum(d.decision_exact for d in decision_diffs)
+            / (len(golden.decisions) + len(extra_decisions)), 4
+        ) if golden.decisions or extra_decisions else 0.0,
         "hit_policy_match_rate": round(
             sum(d.hit_policy_match for d in decision_diffs) / len(decision_diffs), 4
         ) if decision_diffs else 0.0,
