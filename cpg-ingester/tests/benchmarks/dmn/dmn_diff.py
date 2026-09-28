@@ -144,18 +144,21 @@ def _rule_exactness(g: RuleModel, x: RuleModel) -> int:
 
 def _column_alignment(golden: list[str], generated: list[str]):
     """Align generated columns to golden columns by normalized name."""
+    golden_names = [_norm_ws(name).lower() for name in golden]
     generated_names = [_norm_ws(name).lower() for name in generated]
     used: set[int] = set()
     mapping: list[int | None] = []
-    for name in golden:
-        normalized = _norm_ws(name).lower()
+    for normalized in golden_names:
         match = next((i for i, candidate in enumerate(generated_names)
-                      if i not in used and candidate == normalized), None)
+                      if normalized and i not in used and candidate == normalized), None)
         mapping.append(match)
         if match is not None:
             used.add(match)
 
-    if not any(index is not None for index in mapping) and len(golden) == len(generated):
+    if (
+        len(golden) == len(generated)
+        and all(not name for name in golden_names + generated_names)
+    ):
         mapping = list(range(len(golden)))
         used = set(mapping)
 

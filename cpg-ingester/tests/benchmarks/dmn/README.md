@@ -86,7 +86,7 @@ corpus (skips the no-golden `real_corpora` directories).
 | **first_attempt_validity_rate** | Fraction of decisions whose first generation passes L0 syntax validation. |
 | **mean_attempts_to_valid** | Average creator attempts until an L0-valid model (retry cost). |
 | **escalation_rate** | Fraction escalated to a human (retry budget exhausted / no source text). |
-| **mean_structural_f1** | Golden-diff F1 over rule-condition coverage only (input intervals and value sets); output values, hit policy, and column identity are reported separately. |
+| **mean_structural_f1** | Golden-diff F1 over rule-condition coverage on name-aligned columns (input intervals and value sets); a rule on an unidentifiable input column is unmatched. Output values and hit policy are reported separately. |
 | **mean_output_exactness** | Fraction of matched, non-assumption rules whose output cells exactly match the golden. |
 | **decision_exact_rate** | Fraction of decisions with matching columns, hit policy, thresholds, outputs, and rule coverage. |
 | **inputs_match_rate / outputs_match_rate / hit_policy_match_rate** | Fraction of decisions whose corresponding declarations match the golden. |

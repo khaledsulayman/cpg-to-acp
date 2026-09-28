@@ -10,7 +10,7 @@ from lxml import etree
 _BENCH = Path(__file__).parent / "benchmarks" / "dmn"
 sys.path.insert(0, str(_BENCH))
 
-from dmn_diff import diff_models
+from dmn_diff import _column_alignment, diff_decision, diff_models
 from dmn_model import (
     UNIVERSAL,
     Interval,
@@ -23,6 +23,7 @@ from dmn_model import (
 GOLDEN_DIR = Path(__file__).parent.parent / "data" / "golden"
 TREATMENT = (GOLDEN_DIR / "treatment-recommendation.dmn").read_text()
 MONITORING = (GOLDEN_DIR / "monitoring-plan.dmn").read_text()
+DIABETES_TREATMENT = (GOLDEN_DIR / "diabetes-treatment.dmn").read_text()
 
 
 def _swap_first_two_input_columns(xml: str) -> str:
@@ -193,6 +194,63 @@ class TestDiffModels:
         assert report["structural_f1"] == 1.0
         assert report["decisions"][0]["decision_exact"] is True
 
+    def test_column_names_are_normalized_for_case_and_whitespace(self):
+        mutated = TREATMENT.replace(
+            "<text><![CDATA[Systolic BP]]></text>",
+            "<text><![CDATA[  systolic   BP ]]></text>",
+            1,
+        )
+        report = diff_models(TREATMENT, mutated)
+        assert report["structural_f1"] == 1.0
+        assert report["decisions"][0]["inputs_match"] is True
+
+    def test_positional_fallback_requires_all_column_names_to_be_blank(self):
+        golden = parse_dmn(TREATMENT).decisions[0]
+        generated = parse_dmn(TREATMENT).decisions[0]
+        for columns_attribute in ("input_columns", "output_columns"):
+            golden_columns = getattr(golden, columns_attribute)
+            generated_columns = getattr(generated, columns_attribute)
+            setattr(golden, columns_attribute, ["  "] * len(golden_columns))
+            setattr(generated, columns_attribute, [""] * len(generated_columns))
+
+        result = diff_decision(golden, generated)
+
+        assert result.inputs_match is True
+        assert result.outputs_match is True
+        assert result.f1 == 1.0
+        assert result.decision_exact is True
+        assert result.unmatched_golden_columns == []
+        assert result.unmatched_generated_columns == []
+
+    def test_blank_column_is_not_aligned_when_other_names_are_present(self):
+        mapping, missing, extra = _column_alignment(
+            ["Systolic BP", ""],
+            ["Temperature", ""],
+        )
+
+        assert mapping == [None, None]
+        assert missing == ["Systolic BP", ""]
+        assert extra == ["Temperature", ""]
+
+    def test_wrong_column_identity_makes_identical_rules_unmatched(self):
+        mutated = TREATMENT.replace(
+            "<text><![CDATA[Systolic BP]]></text>",
+            "<text><![CDATA[Temperature]]></text>",
+            1,
+        ).replace(
+            "<text><![CDATA[Has Diabetes]]></text>",
+            "<text><![CDATA[Smoking]]></text>",
+            1,
+        )
+        report = diff_models(TREATMENT, mutated)
+        decision = report["decisions"][0]
+
+        assert decision["inputs_match"] is False
+        assert decision["unmatched_golden_columns"] == ["Systolic BP", "Has Diabetes"]
+        assert decision["unmatched_generated_columns"] == ["Temperature", "Smoking"]
+        assert decision["decision_exact"] is False
+        assert report["structural_f1"] == 0.0
+
     def test_hit_policy_is_part_of_decision_exactness(self):
         mutated = TREATMENT.replace('hitPolicy="FIRST"', 'hitPolicy="UNIQUE"', 1)
         report = diff_models(TREATMENT, mutated)
@@ -206,7 +264,23 @@ class TestDiffModels:
         decision = report["decisions"][0]
         assert decision["inputs_match"] is False
         assert decision["unmatched_golden_columns"] == ["Systolic BP"]
-        assert report["structural_f1"] < 1.0
+        assert decision["unmatched_generated_columns"] == ["Diastolic BP"]
+        assert report["structural_f1"] == 0.0
+
+    def test_single_renamed_hba1c_column_has_no_positional_fallback(self):
+        mutated = DIABETES_TREATMENT.replace(
+            "<text><![CDATA[HbA1c]]></text>",
+            "<text><![CDATA[HbA1c Percent]]></text>",
+            1,
+        )
+        report = diff_models(DIABETES_TREATMENT, mutated)
+        decision = report["decisions"][0]
+
+        assert decision["inputs_match"] is False
+        assert decision["unmatched_golden_columns"] == ["HbA1c"]
+        assert decision["unmatched_generated_columns"] == ["HbA1c Percent"]
+        assert decision["decision_exact"] is False
+        assert report["structural_f1"] == 0.0
 
     def test_assumption_rule_can_be_omitted_without_lowering_recall(self):
         mutated = TREATMENT.replace(
