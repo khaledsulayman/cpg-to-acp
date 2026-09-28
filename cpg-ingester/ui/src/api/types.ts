@@ -74,6 +74,9 @@ export interface RecommendationResult {
   artifact_id?: string;
   id: string;
   source_cpg: string;
+  escalated?: boolean;
+  escalation_reason?: string;
+  escalation_errors?: string[];
   title: string;
   content: string;
   recommendation_type: string;
@@ -170,6 +173,7 @@ export interface RunDetail {
   sectionMap?: SectionMapEntry[];
   decisions?: DecisionResult[];
   recommendations?: RecommendationResult[];
+  recommendationEscalations?: EscalatedItem[];
   assemblyReport?: AssemblyReport;
   deliveryStatus?: DeliveryStatus;
   escalatedItems?: EscalatedItem[];

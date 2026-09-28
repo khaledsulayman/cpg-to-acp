@@ -23,6 +23,7 @@ _ANALYSIS_FIELDS = {
 _GENERATE_FIELDS = {
     "dmn_results": "decisions",
     "recommendation_results": "recommendations",
+    "recommendation_escalations": "recommendationEscalations",
     "escalated_items": "escalatedItems",
 }
 

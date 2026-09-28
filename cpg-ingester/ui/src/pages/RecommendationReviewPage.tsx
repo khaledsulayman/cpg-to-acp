@@ -1,4 +1,5 @@
 import {
+  Alert,
   Card,
   CardBody,
   CardTitle,
@@ -17,6 +18,7 @@ import type { ReviewFeedbackItem, RunDetail } from '../api/types';
 import { FeedbackInput } from '../components/FeedbackInput';
 import { ReviewActionBar } from '../components/ReviewActionBar';
 import { useReviewGate } from '../hooks/useReviewGate';
+import { recommendationAlerts, type RecommendationAlert } from '../utils/escalations';
 
 const STRENGTH_COLORS: Record<string, 'green' | 'blue' | 'orange' | 'grey'> = {
   'strong-for': 'green',
@@ -29,10 +31,35 @@ interface RecommendationReviewPageProps {
   run: RunDetail;
 }
 
+function EscalationAlert({ alert }: { alert: RecommendationAlert }) {
+  return (
+    <Alert
+      variant="danger"
+      title={alert.title}
+      isInline
+      style={{ marginBottom: 8 }}
+    >
+      {alert.reason && <Content component="p">Reason: {alert.reason}</Content>}
+      {alert.errors?.length ? (
+        <ul>
+          {alert.errors.map((error, index) => <li key={index}>{error}</li>)}
+        </ul>
+      ) : null}
+    </Alert>
+  );
+}
+
 export function RecommendationReviewPage({ run }: RecommendationReviewPageProps) {
   const review = useReviewGate(run);
   const [expandedRecs, setExpandedRecs] = useState<Set<string>>(new Set());
   const [feedbackMap, setFeedbackMap] = useState<Map<string, { itemType: ReviewFeedbackItem['itemType']; comment: string }>>(new Map());
+  const alerts = recommendationAlerts(run);
+  const sectionAlerts = alerts.filter(alert => alert.scope === 'section');
+  const recommendationAlertsById = new Map<string, RecommendationAlert>(
+    alerts
+      .filter(alert => alert.scope === 'recommendation')
+      .map(alert => [alert.id, alert] as const),
+  );
 
   const handleFeedbackChange = useCallback((itemId: string, comment: string) => {
     setFeedbackMap(prev => {
@@ -50,6 +77,9 @@ export function RecommendationReviewPage({ run }: RecommendationReviewPageProps)
     return (
       <Card style={{ marginTop: 16 }}>
         <CardBody>
+          {sectionAlerts.map((alert, index) => (
+            <EscalationAlert key={`${alert.id}-${index}`} alert={alert} />
+          ))}
           <Content component="p">No recommendations available yet.</Content>
         </CardBody>
       </Card>
@@ -68,11 +98,15 @@ export function RecommendationReviewPage({ run }: RecommendationReviewPageProps)
           )}
         </CardTitle>
         <CardBody>
+          {sectionAlerts.map((alert, index) => (
+            <EscalationAlert key={`${alert.id}-${index}`} alert={alert} />
+          ))}
           <DataList aria-label="Recommendations">
             {run.recommendations.map((rec) => {
               const isExpanded = expandedRecs.has(rec.id);
               const strengthLabel = rec.certainty?.strength ?? '';
               const strengthColor = STRENGTH_COLORS[strengthLabel] ?? 'grey';
+              const escalationAlert = recommendationAlertsById.get(rec.id);
 
               return (
                 <DataListItem key={rec.id} aria-labelledby={`rec-${rec.id}`}>
@@ -103,6 +137,7 @@ export function RecommendationReviewPage({ run }: RecommendationReviewPageProps)
                       ]}
                     />
                   </DataListItemRow>
+                  {escalationAlert && <EscalationAlert alert={escalationAlert} />}
                   <div style={{ padding: '0 16px 16px' }}>
                     <ExpandableSection
                       toggleText={isExpanded ? 'Hide details' : 'Show details'}

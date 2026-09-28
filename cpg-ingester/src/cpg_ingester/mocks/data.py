@@ -86,6 +86,11 @@ RECOMMENDATIONS = [
         "title": "First-line pharmacological therapy with ACE inhibitor or ARB",
         "content": "For adults with confirmed hypertension and an average BP ≥130/80 mmHg, initiate pharmacological treatment with an ACE inhibitor, ARB, calcium channel blocker, or thiazide diuretic.",
         "recommendation_type": "pharmacological",
+        "escalated": True,
+        "escalation_reason": "reviewer-unparseable",
+        "escalation_errors": [
+            "Automated review could not validate the treatment recommendation."
+        ],
         "section": "4. Pharmacological Treatment",
         "certainty": {
             "strength": "strong-for",
@@ -283,6 +288,18 @@ RUN_DETAILS: dict[str, dict[str, Any]] = {
         "sectionMap": SECTION_MAP,
         "decisions": DECISIONS,
         "recommendations": RECOMMENDATIONS,
+        "recommendationEscalations": [
+            {
+                "id": "section-special-populations",
+                "name": "Section: 7. Special Populations",
+                "type": "recommendation",
+                "section": "7. Special Populations",
+                "escalation_reason": "no-source-text",
+                "escalation_errors": [
+                    "No source text was available to verify recommendations in this section."
+                ],
+            }
+        ],
     },
     "run-003": {
         **RUNS["run-003"],
