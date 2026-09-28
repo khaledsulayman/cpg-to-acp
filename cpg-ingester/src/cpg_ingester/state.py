@@ -80,3 +80,4 @@ class RecPipelineState(TypedDict, total=False):
     escalated: bool
     escalation_reason: str
     escalation_errors: list[str]
+    force_escalate: bool

@@ -271,6 +271,8 @@ def _route_after_rec_schema(state: RecPipelineState) -> str:
 
 
 def _route_after_rec_semantic(state: RecPipelineState) -> str:
+    if state.get("force_escalate"):
+        return "rec_escalate"
     if state.get("semantic_discrepancies"):
         if state.get("review_count", 0) >= MAX_REC_REVIEWS:
             return "rec_escalate"
@@ -285,7 +287,15 @@ def _rec_accept(state: RecPipelineState) -> dict:
 
 def _rec_escalate(state: RecPipelineState) -> dict:
     logger.warning("Recommendations escalated for human review")
-    if state.get("schema_errors"):
+    reason = state.get("escalation_reason")
+    if reason:
+        errors = (
+            state.get("escalation_errors")
+            or state.get("semantic_discrepancies")
+            or state.get("schema_errors")
+            or []
+        )
+    elif state.get("schema_errors"):
         reason = "schema-budget-exhausted"
         errors = state["schema_errors"]
     elif state.get("semantic_discrepancies"):
