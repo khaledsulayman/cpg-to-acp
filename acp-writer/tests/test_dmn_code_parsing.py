@@ -4,7 +4,7 @@ from acp_writer.api import _parse_dmn_metadata
 
 
 DMN_WITHOUT_CODES = """<?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+<definitions xmlns="https://www.omg.org/spec/DMN/20211108/MODEL/"
              name="Test Model" namespace="test">
   <inputData id="input_sbp" name="Systolic BP">
     <variable id="var_sbp" name="Systolic BP" typeRef="number"/>
@@ -24,7 +24,7 @@ DMN_WITHOUT_CODES = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 DMN_WITH_EXTENSION_CODES = """<?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+<definitions xmlns="https://www.omg.org/spec/DMN/20211108/MODEL/"
              name="Test Model With Codes" namespace="test">
   <inputData id="input_sbp" name="Systolic BP">
     <variable id="var_sbp" name="Systolic BP" typeRef="number"/>
@@ -50,7 +50,7 @@ DMN_WITH_EXTENSION_CODES = """<?xml version="1.0" encoding="UTF-8"?>
 
 
 DMN_WITH_DESCRIPTION_CODES = """<?xml version="1.0" encoding="UTF-8"?>
-<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+<definitions xmlns="https://www.omg.org/spec/DMN/20211108/MODEL/"
              name="Test Model Desc Codes" namespace="test">
   <inputData id="input_sbp" name="Systolic BP">
     <variable id="var_sbp" name="Systolic BP" typeRef="number"/>
@@ -69,6 +69,14 @@ DMN_WITH_DESCRIPTION_CODES = """<?xml version="1.0" encoding="UTF-8"?>
     </decisionTable>
   </decision>
 </definitions>"""
+
+DMN_WITH_EXTRACTION = DMN_WITHOUT_CODES.replace(
+    '<inputData id="input_sbp" name="Systolic BP">',
+    '<inputData id="input_sbp" name="Systolic BP">\n'
+    '    <extensionElements><acp:extraction xmlns:acp="https://redhat.com/cpg-to-acp/dmn">'
+    '<![CDATA[{"function":"observation_count","params":{"code":"http://loinc.org|8480-6","duration":"P3M"}}]]>'
+    '</acp:extraction></extensionElements>',
+)
 
 
 class TestCodesAbsent:
@@ -110,6 +118,41 @@ class TestCodesFromDescription:
         summary = _parse_dmn_metadata(DMN_WITH_DESCRIPTION_CODES)
         egfr = summary.inputs[1]
         assert egfr.codes == ["http://loinc.org|33914-3"]
+
+
+def test_temporal_extraction_is_parsed_into_contract():
+    summary = _parse_dmn_metadata(DMN_WITH_EXTRACTION)
+    assert summary.inputs[0].extraction.function == "observation_count"
+    assert summary.inputs[0].extraction.params["duration"] == "P3M"
+
+
+def test_temporal_golden_carries_observation_count_metadata():
+    from pathlib import Path
+
+    golden = (Path(__file__).parent.parent.parent / "cpg-ingester" / "data" / "golden"
+              / "glycemic-escalation-monitoring.dmn").read_text()
+    summary = _parse_dmn_metadata(golden)
+    extraction = summary.inputs[0].extraction
+    assert extraction.function == "observation_count"
+    assert extraction.params == {
+        "code": "http://loinc.org|4548-4",
+        "duration": "P6M",
+        "threshold": 9,
+        "comparator": "ge",
+    }
+
+
+class TestNamespaceTolerance:
+    def test_legacy_1_3_namespace_still_parses(self):
+        """Metadata parsing is namespace-tolerant: a 1.3-namespace document still
+        parses so mixed-vintage models keep working after the 1.4 migration."""
+        legacy = DMN_WITHOUT_CODES.replace(
+            "https://www.omg.org/spec/DMN/20211108/MODEL/",
+            "https://www.omg.org/spec/DMN/20191111/MODEL/",
+        )
+        summary = _parse_dmn_metadata(legacy)
+        assert len(summary.inputs) == 2
+        assert summary.inputs[0].name == "Systolic BP"
 
 
 class TestExistingBehaviorPreserved:

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from acp_writer.tools.dmn_evaluation import (
+    DmnEngineError,
     InProcessEvaluationClient,
     HttpEvaluationClient,
     ModelNotDeployed,
@@ -26,6 +27,22 @@ class TestInProcessClient:
             with pytest.raises(ModelNotDeployed):
                 client.evaluate("nonexistent", {})
 
+    def test_engine_422_from_jit_preserves_messages(self):
+        from acp_writer.api import _evaluate_jit
+
+        mock_response = MagicMock()
+        mock_response.status_code = 422
+        mock_response.json.return_value = {
+            "error": "DMN evaluation errors",
+            "messages": [{"severity": "ERROR", "text": "missing input"}],
+        }
+        with patch("acp_writer.api.requests.post", return_value=mock_response):
+            with pytest.raises(DmnEngineError) as exc_info:
+                _evaluate_jit("<definitions/>", {})
+
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.messages[0]["text"] == "missing input"
+
 
 class TestHttpClient:
     def test_evaluate_success(self):
@@ -47,6 +64,24 @@ class TestHttpClient:
         with patch("acp_writer.tools.dmn_evaluation.requests.post", return_value=mock_response):
             with pytest.raises(ModelNotDeployed):
                 client.evaluate("unknown-model", {})
+
+    def test_evaluate_422_preserves_engine_messages(self):
+        client = HttpEvaluationClient("http://decision-engine:8080")
+        mock_response = MagicMock()
+        mock_response.status_code = 422
+        mock_response.json.return_value = {
+            "error": "DMN compilation errors",
+            "messages": [{"severity": "ERROR", "text": "unknown variable"}],
+        }
+
+        with patch("acp_writer.tools.dmn_evaluation.requests.post", return_value=mock_response):
+            with pytest.raises(DmnEngineError) as exc_info:
+                client.evaluate("bad-model", {})
+
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.messages == [
+            {"severity": "ERROR", "text": "unknown variable"},
+        ]
 
 
 class TestClientFactory:

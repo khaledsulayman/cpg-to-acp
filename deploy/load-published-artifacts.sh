@@ -7,6 +7,7 @@
 #
 # Usage:
 #   ./deploy/load-published-artifacts.sh --config <cluster.env> <cpg-id>
+#   ./deploy/load-published-artifacts.sh --config <cluster.env> --replace <cpg-id>
 #   ./deploy/load-published-artifacts.sh --config deploy/config/cluster.env UNK-HTN-UNDATED
 #
 # Prerequisites:
@@ -24,12 +25,14 @@ source "$REPO_ROOT/deploy/lib.sh"
 
 CONFIG_PATH="$REPO_ROOT/deploy/config/cluster.env"
 CPG_ID=""
+REPLACE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --config) CONFIG_PATH="$2"; shift 2;;
+        --replace) REPLACE=true; shift;;
         -h|--help)
-            echo "Usage: deploy/load-published-artifacts.sh --config <cluster.env> <cpg-id>"
+            echo "Usage: deploy/load-published-artifacts.sh --config <cluster.env> [--replace] <cpg-id>"
             echo ""
             echo "TEMPORARY: loads published CPG artifacts from MinIO into acp-writer."
             echo "Will be replaced by the delivery/notification flow."
@@ -87,6 +90,10 @@ code=$(oc exec "$ROUTER_POD" -n "$NAMESPACE" -- \
     --data-binary @/tmp/cpg-metadata.json \
     http://localhost:8080/api/v1/guidelines 2>/dev/null)
 log "  Guideline registration: HTTP $code"
+if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+    echo "ERROR: Guideline registration failed with HTTP $code" >&2
+    exit 1
+fi
 
 # Step 2: Ingest recommendations
 log "Ingesting recommendations..."
@@ -112,10 +119,21 @@ code=$(oc exec "$ROUTER_POD" -n "$NAMESPACE" -- \
     --data-binary @/tmp/cpg-recs.json \
     http://localhost:8080/api/v1/knowledge/recommendations/batch 2>/dev/null)
 log "  Recommendations ingest: HTTP $code"
+if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+    echo "ERROR: Recommendations ingest failed with HTTP $code" >&2
+    exit 1
+fi
 
 # Step 3: Deploy DMN models
 log "Deploying DMN models..."
 dmn_count=0
+encoded_cpg=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$CPG_ID")
+dmn_url="http://localhost:8080/api/v1/decisions/models?source_cpg=${encoded_cpg}"
+if [ "$REPLACE" = true ]; then
+    dmn_url="${dmn_url}&replace=true"
+fi
+dmn_list=$(mktemp)
+trap 'rm -f "$dmn_list"' EXIT
 oc exec "$BFF_POD" -n "$NAMESPACE" -- python3 -c "
 import os, boto3, sys, json
 s3 = boto3.client('s3',
@@ -126,7 +144,10 @@ objs = s3.list_objects_v2(Bucket='cpg-artifacts', Prefix='${BASE_KEY}/dmn/').get
 for o in objs:
     if o['Key'].endswith('.dmn'):
         print(json.dumps({'key': o['Key'], 'name': o['Key'].rsplit('/',1)[-1].replace('.dmn','')}))
-" 2>/dev/null | while IFS= read -r line; do
+" 2>/dev/null > "$dmn_list"
+
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
     key=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['key'])")
     name=$(echo "$line" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
 
@@ -141,14 +162,34 @@ sys.stdout.buffer.write(body)
 " 2>/dev/null > "/tmp/dmn-upload.dmn"
 
     oc cp "/tmp/dmn-upload.dmn" "$ROUTER_POD:/tmp/dmn-upload.dmn" -n "$NAMESPACE"
-    code=$(oc exec "$ROUTER_POD" -n "$NAMESPACE" -- \
-        curl -s -o /dev/null -w "%{http_code}" --max-time 15 \
+    response=$(oc exec "$ROUTER_POD" -n "$NAMESPACE" -- \
+        curl -sS -w '\n__HTTP_STATUS__:%{http_code}' --max-time 15 \
         -X POST -H "Host: acp-decision-engine" \
         -H "Content-Type: application/xml" \
         --data-binary @/tmp/dmn-upload.dmn \
-        http://localhost:8080/api/v1/decisions/models 2>/dev/null)
+        "$dmn_url" 2>/dev/null)
+    code="${response##*__HTTP_STATUS__:}"
+    body="${response%$'\n__HTTP_STATUS__:'*}"
     log "  $name: HTTP $code"
+    if [[ ! "$code" =~ ^2[0-9][0-9]$ ]]; then
+        echo "ERROR: Failed to deploy DMN model '$name' for CPG '$CPG_ID' (HTTP $code)" >&2
+        if [ "$code" = "409" ] || [ "$code" = "422" ]; then
+            if ! printf '%s' "$body" | python3 -c 'import json,sys
+d=json.load(sys.stdin)
+if d.get("error"):
+    print("    error:", d["error"])
+if d.get("messages"):
+    print("    messages:", json.dumps(d["messages"], separators=(",", ":")))
+if not d.get("error") and not d.get("messages"):
+    print("    response:", json.dumps(d, separators=(",", ":")))'; then
+                printf '    response: %s\n' "$body" >&2
+            fi
+        else
+            printf '    response: %s\n' "$body" >&2
+        fi
+        exit 1
+    fi
     dmn_count=$((dmn_count + 1))
-done
+done < "$dmn_list"
 
 log_step "Published artifacts loaded: 1 guideline, 1 recommendations bundle, $dmn_count DMN models"

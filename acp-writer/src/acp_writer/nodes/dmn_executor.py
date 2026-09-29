@@ -7,13 +7,15 @@ in-process (monolith) vs HTTP (decision-engine pod) execution.
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import mlflow
+from pydantic import ValidationError
 
 from acp_writer.state import CarePlanComposerState
 from acp_writer.tools.dmn_evaluation import (
+    DmnEngineError,
     DmnEvaluationClient,
     ModelNotDeployed,
     get_evaluation_client,
@@ -26,6 +28,15 @@ from acp_writer.tools.ips_extractor import (
     extract_observation_concept,
     extract_patient_age,
 )
+from acp_writer.tools.temporal_index import TemporalIndex, build_temporal_index
+from acp_writer.tools.temporal_queries import (
+    consecutive_above,
+    cross_resource_temporal,
+    observation_count,
+    observations_in_window,
+    rate_of_change,
+)
+from cpg_contracts import Extraction
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +50,6 @@ _MEDICATION_SYSTEMS = {RXNORM}
 _INACTIVE_CONDITION_STATUSES = {"resolved", "inactive", "remission"}
 _INACTIVE_MEDICATION_STATUSES = {"cancelled", "entered-in-error", "stopped"}
 _INACTIVE_ALLERGY_STATUSES = {"resolved", "inactive"}
-
-
 def _filter_active_entries(entries: list, inactive_statuses: set) -> list:
     """Filter inventory entries to those with active (or absent) status."""
     return [e for e in entries if (e.status or "active") not in inactive_statuses]
@@ -161,6 +170,73 @@ def _extract_via_pipeline(
     return None, None, audit
 
 
+@mlflow.trace(name="dmn_extract_temporal")
+def _extract_temporal(
+    ips_bundle: dict,
+    extraction: dict,
+    temporal_index: TemporalIndex,
+    reference_date: str | date | None,
+) -> tuple[Any, list[str], dict]:
+    """Execute an explicitly annotated temporal extraction."""
+    try:
+        contract = Extraction.model_validate(extraction)
+    except ValidationError as exc:
+        return None, [], {
+            "match_basis": "decision_variable_extraction",
+            "extraction": extraction,
+            "degraded": True,
+            "error": exc.errors(),
+        }
+    function = contract.function
+    params = contract.params
+    audit = {
+        "match_basis": "decision_variable_extraction",
+        "extraction": extraction,
+    }
+    if isinstance(reference_date, str):
+        try:
+            resolved_date = date.fromisoformat(reference_date[:10])
+        except ValueError:
+            audit["degraded"] = True
+            audit["error"] = f"Invalid reference date: {reference_date}"
+            return None, [], audit
+    else:
+        resolved_date = reference_date or datetime.now(timezone.utc).date()
+
+    code = params.get("code", "")
+    try:
+        if function == "observations_in_window":
+            result = observations_in_window(
+                temporal_index, code, params.get("duration", "P12M"), resolved_date,
+            )
+        elif function == "observation_count":
+            result = observation_count(
+                temporal_index, code, params.get("duration", "P12M"), resolved_date,
+                threshold=params.get("threshold"), comparator=params.get("comparator"),
+            )
+        elif function == "consecutive_above":
+            result = consecutive_above(
+                temporal_index, code, params.get("threshold", 0), resolved_date,
+            )
+        elif function == "rate_of_change":
+            result = rate_of_change(
+                temporal_index, code, params.get("duration", "P1Y"), resolved_date,
+            )
+        else:
+            result = cross_resource_temporal(
+                temporal_index, ips_bundle, params.get("anchor_code", ""),
+                params.get("target_code", ""), params.get("window", "P14D"),
+            )
+    except (TypeError, ValueError, KeyError) as exc:
+        audit["degraded"] = True
+        audit["error"] = str(exc)
+        return None, [], audit
+
+    audit["data_quality"] = result.data_quality
+    audit["insufficient_data"] = result.insufficient_data
+    return result.value, result.provenance, audit
+
+
 @mlflow.trace(name="dmn_resolve_input")
 def _extract_input_value(
     ips_bundle: dict, var_name: str, var_type: str,
@@ -168,10 +244,19 @@ def _extract_input_value(
     codes: list[str] | None = None,
     reference_date: str | None = None,
     inventory: Any = None, llm_client: Any = None,
-) -> tuple[Any, str | None, dict]:
+    extraction: dict | None = None,
+    temporal_index: TemporalIndex | None = None,
+) -> tuple[Any, str | list[str] | None, dict]:
     """Extract a DMN input value — prior results, codes, then pipeline."""
     key = re.sub(r"([a-z])([A-Z])", r"\1 \2", var_name).lower().strip()
     audit: dict[str, Any] = {}
+
+    if extraction:
+        temporal_index = temporal_index or build_temporal_index(ips_bundle)
+        value, ref, temporal_audit = _extract_temporal(
+            ips_bundle, extraction, temporal_index, reference_date,
+        )
+        return value, ref, temporal_audit
 
     for model_output in prior_results.values():
         for decision_name, decision_val in model_output.items():
@@ -214,6 +299,7 @@ def resolve_inputs(
     prior_results: dict[str, dict],
     llm_client: Any = None,
     reference_date: str | None = None,
+    temporal_index: TemporalIndex | None = None,
 ) -> tuple[dict[str, Any], list[str], dict[str, dict]]:
     """Resolve all inputs for one DMN model.
 
@@ -230,10 +316,14 @@ def resolve_inputs(
             reference_date=reference_date,
             inventory=inventory,
             llm_client=llm_client,
+            extraction=var.get("extraction"),
+            temporal_index=temporal_index,
         )
         if value is not None:
             inputs[var["name"]] = value
-        if ref:
+        if isinstance(ref, list):
+            fhir_refs.extend(ref)
+        elif ref:
             fhir_refs.append(ref)
         input_audit[var["name"]] = var_audit
 
@@ -265,6 +355,7 @@ def dmn_executor(state: CarePlanComposerState) -> dict:
 
     from acp_writer.tools.bundle_inventory import build_bundle_inventory
     inventory = build_bundle_inventory(ips_bundle)
+    temporal_index = build_temporal_index(ips_bundle)
 
     llm_client = None
     try:
@@ -298,6 +389,7 @@ def dmn_executor(state: CarePlanComposerState) -> dict:
             ips_bundle, inventory, prior_results,
             llm_client=llm_client,
             reference_date=today,
+            temporal_index=temporal_index,
         )
 
         logger.info("Evaluating DMN model: %s with inputs: %s", model_info.get("name"), inputs)
@@ -328,6 +420,21 @@ def dmn_executor(state: CarePlanComposerState) -> dict:
                 "input_resolution": input_audit,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "error": "Model not deployed",
+            })
+
+        except DmnEngineError as exc:
+            logger.error("DMN engine rejected %s: %s", model_id, exc.messages)
+            audit_trail.append({
+                "model_id": model_id,
+                "model_name": model_info.get("name", model_id),
+                "inputs": inputs,
+                "outputs": {},
+                "fhir_references": fhir_refs,
+                "input_resolution": input_audit,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "error": str(exc),
+                "error_status": exc.status_code,
+                "error_messages": exc.messages,
             })
 
         except Exception as e:

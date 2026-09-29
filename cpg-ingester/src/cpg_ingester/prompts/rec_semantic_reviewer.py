@@ -48,6 +48,14 @@ header or document title.
 
 Classify each issue as CRITICAL or MINOR:
 
+If any check boolean (`content_faithful`, `certainty_accurate`, or \
+`type_correct`) is false, include at least one issue explaining the failed \
+check in that recommendation's `issues` list. Prefix every issue string \
+with exactly `CRITICAL:` or `MINOR:`. If `content_faithful` or \
+`type_correct` is false, at least one of that recommendation's issues must be \
+`CRITICAL:` and must describe that failure. If only `certainty_accurate` is \
+false, the issue may be `MINOR:`.
+
 - **CRITICAL**: Changes clinical meaning or could lead to patient harm. \
 Examples: reversed treatment direction, fabricated content, wrong drug or \
 dose, omitted critical qualifier, missing recommendation entirely, wrong \
@@ -73,7 +81,8 @@ Source CPG content (the text these were extracted from):
 
 For each recommendation, check content faithfulness, certainty accuracy, \
 and type correctness. Also check for any recommendations in the source \
-that are missing from the extraction.
+that are missing from the extraction. Use one `recommendation_title` per \
+recommendation, copied exactly from the input.
 
 Classify each issue as CRITICAL or MINOR per the severity rules. Only \
 set discrepancies_found=true if CRITICAL issues exist.

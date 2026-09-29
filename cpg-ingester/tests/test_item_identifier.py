@@ -127,6 +127,24 @@ class TestValidation:
         issues = _validate_decision(item)
         assert any("inputs" in i for i in issues)
 
+    def test_accepts_explicit_code_tokens(self):
+        item = {
+            "name": "Test Decision",
+            "inputs": [{
+                "name": "Systolic BP",
+                "type": "number",
+                "codes": ["http://loinc.org|8480-6"],
+            }],
+        }
+        assert _validate_decision(item) == []
+
+    def test_rejects_malformed_code_tokens(self):
+        item = {
+            "name": "Test Decision",
+            "inputs": [{"name": "Systolic BP", "codes": ["not-a-code"]}],
+        }
+        assert any("invalid codes" in issue for issue in _validate_decision(item))
+
     def test_valid_recommendation(self):
         item = {
             "title": "Test Rec",
@@ -168,6 +186,16 @@ class TestAssignGUIDs:
         result = _assign_guids(items)
         assert result[0]["cross_references"][0] == result[1]["id"]
         assert result[1]["cross_references"][0] == result[0]["id"]
+
+    def test_decisions_get_stable_model_ids_without_replacing_item_guids(self):
+        items = [
+            {"type": "decision", "name": "Treatment Recommendation", "cross_references": []},
+            {"type": "recommendation", "title": "DASH Diet", "cross_references": []},
+        ]
+        result = _assign_guids(items)
+        assert result[0]["model_id"] == "treatment-recommendation"
+        assert len(result[0]["id"]) == 36
+        assert "model_id" not in result[1]
 
     def test_resolves_modifies(self):
         items = [

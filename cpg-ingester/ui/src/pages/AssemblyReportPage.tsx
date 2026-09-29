@@ -80,7 +80,14 @@ export function AssemblyReportPage({ run }: AssemblyReportPageProps) {
                 style={{ marginBottom: 8 }}
               >
                 {item.section && <span>Section: {item.section}</span>}
-                {item.reason && <span> — {item.reason}</span>}
+                {item.escalation_reason && <span> — {item.escalation_reason}</span>}
+                {item.escalation_errors?.length ? (
+                  <ul>
+                    {item.escalation_errors.map((error, errorIndex) => (
+                      <li key={errorIndex}>{error}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </Alert>
             ))}
           </CardBody>

@@ -4,11 +4,14 @@ import json
 from pathlib import Path
 
 from cpg_contracts import (
+    Extraction,
     CPGMetadata,
     DecisionModelSummary,
     Recommendation,
     RecommendationBundle,
     SourceLocation,
+    decision_model_id,
+    DecisionVariable,
 )
 
 
@@ -78,6 +81,65 @@ def test_decision_model_summary_with_source_location():
     data = dm.model_dump()
     assert data["source_location"]["page_start"] == 47
     assert data["source_location"]["source_text"].startswith("Table 3")
+
+
+def test_decision_model_id_is_stable():
+    assert decision_model_id("Treatment Recommendation") == "treatment-recommendation"
+    assert decision_model_id("BP / CKD: follow-up") == "bp-ckd-follow-up"
+
+
+def test_decision_variable_extraction_roundtrip():
+    variable = DecisionVariable(
+        name="Systolic BP",
+        type="number",
+        extraction={"function": "observation_count", "params": {
+            "code": "http://loinc.org|8480-6", "duration": "P3M",
+        }},
+    )
+    assert DecisionVariable.model_validate(variable.model_dump()).extraction.params["duration"] == "P3M"
+
+
+def test_extraction_contract_rejects_invalid_parameters():
+    import pytest
+
+    with pytest.raises(ValueError, match="system\\|code"):
+        Extraction(function="observation_count", params={"code": "8480-6", "duration": "P3M"})
+    with pytest.raises(ValueError, match="comparator"):
+        Extraction(function="observation_count", params={
+            "code": "http://loinc.org|8480-6", "duration": "P3M",
+            "threshold": 9, "comparator": "gte",
+        })
+        with pytest.raises(ValueError, match="not boolean"):
+            Extraction(function="consecutive_above", params={
+                "code": "http://loinc.org|8480-6", "threshold": True,
+            })
+
+
+def test_consecutive_above_roundtrips_without_comparator():
+    extraction = Extraction(function="consecutive_above", params={
+        "code": "http://loinc.org|8480-6", "threshold": 140,
+    })
+    assert Extraction.model_validate(extraction.model_dump()) == extraction
+
+
+def test_consecutive_above_rejects_comparator():
+    import pytest
+
+    with pytest.raises(ValueError, match="comparator is not supported"):
+        Extraction(function="consecutive_above", params={
+            "code": "http://loinc.org|8480-6", "threshold": 140, "comparator": "ge",
+        })
+
+
+def test_extraction_contract_rejects_unknown_function_and_missing_parameter():
+    import pytest
+
+    with pytest.raises(ValueError):
+        Extraction(function="unknown", params={})
+    with pytest.raises(ValueError, match="duration"):
+        Extraction(function="rate_of_change", params={
+            "code": "http://loinc.org|8480-6",
+        })
 
 
 def test_sample_fixture_roundtrip():

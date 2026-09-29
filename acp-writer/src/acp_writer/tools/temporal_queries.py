@@ -159,7 +159,7 @@ def _apply_threshold(
     }
     op = ops.get(comparator)
     if not op:
-        return observations
+        raise ValueError(f"unknown comparator {comparator!r}")
 
     result = []
     for o in observations:

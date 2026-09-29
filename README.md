@@ -119,17 +119,22 @@ cpg-parse data/synthetic-hypertension-cpg.pdf -o output
 # Produces: output/synthetic-hypertension-cpg.md
 ```
 
-### 4. Extract DMN decision tables and deploy to acp-writer
+### 4. Run the ingestion pipeline and deploy to acp-writer
+
+The multi-agent pipeline parses the CPG, generates and reviews DMN decision
+tables, extracts recommendations, and (with `--acp-writer-url`) deploys the
+results to acp-writer in one run:
 
 ```bash
-# Extract DMN from the parsed CPG using the LLM, then deploy to acp-writer
-cpg-extract-dmn output/synthetic-hypertension-cpg.md -o output \
-  --deploy --acp-writer-url http://localhost:8082
-
-# Or extract and deploy as separate steps:
-cpg-extract-dmn output/synthetic-hypertension-cpg.md -o output
-cpg-deploy-dmn output/decision-table-1.dmn output/decision-table-2.dmn \
+cpg-ingest data/synthetic-hypertension-cpg.pdf -o output/my-run \
   --acp-writer-url http://localhost:8082
+# Generated DMN is written to output/my-run/dmn/*.dmn
+```
+
+To deploy DMN that was generated in a previous run without re-ingesting:
+
+```bash
+cpg-deploy-dmn output/my-run/dmn/*.dmn --acp-writer-url http://localhost:8082
 ```
 
 Verify the models are deployed:
@@ -203,7 +208,7 @@ On OpenShift, MaaS replaces LiteLLM for governed inference routing, and MLflow t
 
 | Standard | Version | Notes |
 |---|---|---|
-| **DMN** | 1.4 | Latest version supported by Drools/Kogito at conformance level 3. Namespace: `https://www.omg.org/spec/DMN/20191111/MODEL/`. Upgrade to 1.5 when Drools/Kogito formally adds support. |
+| **DMN** | 1.4 | Latest version supported by Drools/Kogito at conformance level 3. Language namespace: `https://www.omg.org/spec/DMN/20211108/MODEL/` (the per-model target `namespace=` attribute is a unique URI per model). Upgrade to 1.5 when Drools/Kogito formally adds support. |
 | **FHIR** | R4 | Via Medplum FHIR server |
 | **BPMN** | 2.0 | Phase 4 |
 

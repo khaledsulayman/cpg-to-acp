@@ -219,6 +219,7 @@ def _do_generate(data: dict) -> dict:
             "item_manifest": state.get("item_manifest", []),
             "dmn_results": state.get("dmn_results", []),
             "recommendation_results": state.get("recommendation_results", []),
+            "recommendation_escalations": state.get("recommendation_escalations", []),
         }
 
         _, ref = store_artifact(_store, f"{uuid4()}/generate_result.json", result)

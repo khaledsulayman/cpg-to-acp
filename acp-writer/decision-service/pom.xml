@@ -30,6 +30,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.drools</groupId>
             <artifactId>drools-quarkus-decisions</artifactId>
             <version>${kie.version}</version>
@@ -46,6 +51,11 @@
         <dependency>
             <groupId>org.kie</groupId>
             <artifactId>kie-dmn-api</artifactId>
+            <version>${kie.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.kie</groupId>
+            <artifactId>kie-dmn-validation</artifactId>
             <version>${kie.version}</version>
         </dependency>
         <dependency>

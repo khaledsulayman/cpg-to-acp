@@ -51,6 +51,9 @@ Environment variables (alternative to CLI flags):
 - `LITELLM_URL` — LiteLLM proxy URL (default: `http://localhost:4000`)
 - `LLM_MODEL` — Model name (default: `default`)
 - `LITELLM_API_KEY` — API key (default: `sk-change-me`)
+- `DMN_PREFLIGHT_URL` — optional decision-service validation endpoint; when set,
+  accepted DMN is validated at `<url>?validate_only=true` and failures feed the
+  repair loop. Unset means preflight is disabled.
 
 Docling / figure knobs (all optional; blank or unset means the default):
 - `INGESTION_OCR_ENABLED` — run the conditional OCR re-parse for scanned/image-only
@@ -89,18 +92,23 @@ Each run writes to an output directory (`output/<run-id>/`):
 | `delivery-status.json` | API delivery results |
 | `run-summary.json` | Overall run summary |
 
+Decision model IDs are stable slugs of the manifest decision name (for example,
+`Treatment Recommendation` becomes `treatment-recommendation`). The same ID is
+carried on the DMN `<definitions>` element and in `DecisionModelSummary`, so a
+redeploy updates the intended model rather than creating a second name-derived
+identity. Inputs with explicit temporal language may also carry an
+`acp:extraction` JSON annotation naming one of the supported temporal
+primitives and its parameters; ordinary inputs omit the annotation.
+
 ### Legacy commands (still available)
 
 ```bash
 # Parse only (Docling)
 cpg-parse data/synthetic-hypertension-cpg.pdf -o output
 
-# Extract DMN only (single-shot, no review)
-cpg-extract-dmn output/synthetic-hypertension-cpg.md -o output \
-  --litellm-url http://localhost:4000
-
-# Deploy DMN to acp-writer
-cpg-deploy-dmn output/decision-table-1.dmn --acp-writer-url http://localhost:8082
+# Deploy an already-generated DMN file to acp-writer
+cpg-deploy-dmn output/my-run/dmn/treatment-recommendation.dmn \
+  --acp-writer-url http://localhost:8082
 ```
 
 ## Testing
@@ -133,7 +141,11 @@ Every extraction step has a two-layer review:
 | DMN | XML/XSD/FEEL/structure checks | Claim-level source comparison |
 | Recommendations | Pydantic/enum/cross-ref checks | Content faithfulness review |
 
-Review loops retry up to 2 times, then escalate to human review.
+Syntax review retries up to 3 times and semantic review retries up to 2 times,
+then escalates to human review.
+
+The manifest-fed DMN benchmark and its offline tests are documented in
+[`tests/benchmarks/dmn/README.md`](tests/benchmarks/dmn/README.md).
 
 ## Tracing
 
@@ -161,6 +173,7 @@ Review screens support a **cyclical feedback pattern**: approve OR request chang
 ### Tech stack
 
 - **PatternFly 6** — Red Hat design system (Page, Nav, Table, DataList, TreeView, ProgressStepper, CodeBlock, FileUpload, Modal, Skeleton, EmptyState)
+- **dmn-js 17** — renders DMN 1.3; the UI remaps the DMN 1.4 namespaces on the copy it passes to the viewer (`src/utils/dmnViewerCompat.ts`). Generated artifacts are DMN 1.4 and are not modified.
 - **React 19 + TypeScript** (strict mode)
 - **Vite 6** — dev server on port 3003, proxies `/api` to BFF at `localhost:8095`
 - **TanStack Query v5** — data fetching with adaptive polling (stops on errors, stops when no active runs)

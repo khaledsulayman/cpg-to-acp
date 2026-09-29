@@ -1,0 +1,33 @@
+# DMN generation-quality benchmark configuration.
+
+# Corpus manifest, resolved relative to this benchmark folder (self-contained).
+# Its source_cpg/golden paths inside are cpg-ingester-relative.
+corpus_manifest: corpus.yaml
+
+# MLflow experiment name; the tracking URI comes from MLFLOW_TRACKING_URI
+# (falls back to a local ./mlruns store when unset).
+mlflow_experiment: dmn-generation-quality
+
+# Where human-readable JSON results are written (gitignored scratch space).
+# Resolved relative to cpg-ingester → repo-root working/benchmarks/dmn/reports,
+# matching the parsing benchmark's working/benchmarks/<stage>/reports convention.
+report_dir: ../working/benchmarks/dmn/reports
+
+# Reviewer tuning guard: these defect classes are the HOLDOUT set — measured in
+# every run but never used to drive reviewer prompt-wording iterations later, so
+# a gap between tuning-set and holdout-set recall reveals overfitting to the
+# synthetic injectors.
+reviewer_holdout_classes:
+  - wrong_hit_policy
+
+# Which corpora the "all" corpus selector expands to.
+corpora:
+  - hypertension
+  - diabetes
+  - atp_iii
+
+# Extra directories of already-generated DMN to score for L0 + compile validity
+# (no goldens — validity metrics only). Paths are repo-relative.
+real_corpora:
+  - cpg-ingester/output/a76a8506/dmn
+  - working/e2e-artifacts/25d60803-atp3-cholesterol/05-published/dmn

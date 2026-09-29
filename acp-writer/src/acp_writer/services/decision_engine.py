@@ -10,8 +10,16 @@ Security profile: Kogito runtime + MinIO only (no LLM, no MaaS).
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
-from acp_writer.api import _dynamic_models, _parse_dmn_metadata, _evaluate_jit
+from acp_writer.api import (
+    _dynamic_models,
+    _parse_dmn_metadata,
+    _evaluate_jit,
+    _validate_dmn_with_engine,
+    _validation_failure_response,
+)
+from acp_writer.tools.dmn_evaluation import DmnEngineError
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +35,35 @@ def health():
 
 
 @app.post("/api/v1/decisions/models", status_code=201)
-async def deploy_decision_model(request: Request, source_cpg: str | None = None):
+async def deploy_decision_model(
+    request: Request,
+    source_cpg: str | None = None,
+    validate_only: bool = False,
+    replace: bool = False,
+):
     body = await request.body()
     dmn_xml = body.decode("utf-8")
     summary = _parse_dmn_metadata(dmn_xml)
+    validation = _validate_dmn_with_engine(dmn_xml)
+    if validation is not None and not validation.get("valid", False):
+        return _validation_failure_response(validation)
+    if validate_only:
+        if validation is None:
+            raise HTTPException(status_code=503, detail="Decision engine validation unavailable")
+        return JSONResponse(status_code=200, content=validation)
     if source_cpg:
         summary.source_cpg = source_cpg
+    existing = _dynamic_models.get(summary.id)
+    if (existing and source_cpg and existing["summary"].source_cpg
+            and existing["summary"].source_cpg != source_cpg and not replace):
+        logger.warning("Rejecting model id collision: %s (%s vs %s)", summary.id,
+                       existing["summary"].source_cpg, source_cpg)
+        return JSONResponse(status_code=409, content={
+            "error": "Decision model id already belongs to another source CPG",
+            "model_id": summary.id,
+            "existing_source_cpg": existing["summary"].source_cpg,
+            "source_cpg": source_cpg,
+        })
     _dynamic_models[summary.id] = {"summary": summary, "dmn_xml": dmn_xml}
     return summary.model_dump(mode="json")
 
@@ -66,6 +97,11 @@ async def evaluate(request: Request):
     try:
         outputs = _evaluate_jit(deployed["dmn_xml"], inputs)
         return {"outputs": outputs}
+    except DmnEngineError as exc:
+        logger.warning("DMN engine rejected evaluation for %s: %s", model_id, exc.error)
+        return JSONResponse(status_code=exc.status_code, content={
+            "error": exc.error, "messages": exc.messages,
+        })
     except Exception as exc:
         logger.error("DMN evaluation failed for %s: %s", model_id, exc)
         raise HTTPException(status_code=500, detail=str(exc))

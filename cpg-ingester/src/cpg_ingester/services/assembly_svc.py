@@ -39,11 +39,15 @@ async def assemble(request: Request):
         item_manifest = source.get("item_manifest", data.get("item_manifest", []))
         dmn_results = source.get("dmn_results", [])
         recommendation_results = source.get("recommendation_results", [])
+        recommendation_escalations = source.get(
+            "recommendation_escalations", data.get("recommendation_escalations", [])
+        )
     else:
         cpg_metadata = data.get("cpg_metadata", {})
         item_manifest = data.get("item_manifest", [])
         dmn_results = data.get("dmn_results", [])
         recommendation_results = data.get("recommendation_results", [])
+        recommendation_escalations = data.get("recommendation_escalations", [])
 
     with tempfile.TemporaryDirectory() as output_dir:
         state = {
@@ -51,6 +55,7 @@ async def assemble(request: Request):
             "item_manifest": item_manifest,
             "dmn_results": dmn_results,
             "recommendation_results": recommendation_results,
+            "recommendation_escalations": recommendation_escalations,
             "output_dir": output_dir,
         }
 

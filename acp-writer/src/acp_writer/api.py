@@ -10,11 +10,13 @@ from datetime import datetime, timezone
 import mlflow
 import requests
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 
 from cpg_contracts import (
     CPGMetadata,
     DecisionModelSummary,
     DecisionVariable,
+    decision_model_id,
     Recommendation,
     RecommendationBundle,
     RecommendationSearchRequest,
@@ -26,6 +28,7 @@ from acp_writer.store.embedding import (
 )
 from acp_writer.store.guidelines_store import GuidelinesStore
 from acp_writer.store.vector_store import InMemoryVectorStore, VectorStore
+from acp_writer.tools.dmn_evaluation import DmnEngineError
 
 try:
     mlflow.fastapi.autolog()
@@ -35,7 +38,9 @@ except AttributeError:
 logger = logging.getLogger(__name__)
 
 KOGITO_URL = os.environ.get("KOGITO_URL", "http://localhost:8081")
-DMN_NS = "https://www.omg.org/spec/DMN/20191111/MODEL/"
+
+# DMN metadata is parsed with namespace-wildcard matches ("{*}tag") so it works
+# across DMN language versions (1.3, 1.4, …) without pinning a MODEL namespace.
 
 _dynamic_models: dict[str, dict] = {}
 
@@ -101,18 +106,20 @@ def _extract_codes(input_data_el: ET.Element) -> list[str]:
     """
     codes: list[str] = []
 
-    ext = input_data_el.find(f"{{{DMN_NS}}}extensionElements")
+    ext = input_data_el.find("{*}extensionElements")
     if ext is not None:
         for child in ext:
+            if child.tag.rsplit("}", 1)[-1] == "extraction":
+                continue
             system = child.get("system", "")
             code = child.get("code", "")
             if system and code:
                 codes.append(f"{system}|{code}")
             elif child.text:
-                codes.extend(_CODE_TOKEN_RE.findall(child.text))
+                codes.extend(f"{system}|{code}" for system, code in _CODE_TOKEN_RE.findall(child.text))
 
     if not codes:
-        desc_el = input_data_el.find(f"{{{DMN_NS}}}description")
+        desc_el = input_data_el.find("{*}description")
         if desc_el is not None and desc_el.text:
             for system, code in _CODE_TOKEN_RE.findall(desc_el.text):
                 codes.append(f"{system}|{code}")
@@ -122,9 +129,25 @@ def _extract_codes(input_data_el: ET.Element) -> list[str]:
 
 def _extract_description(input_data_el: ET.Element) -> str | None:
     """Extract description text from a DMN inputData element."""
-    desc_el = input_data_el.find(f"{{{DMN_NS}}}description")
+    desc_el = input_data_el.find("{*}description")
     if desc_el is not None and desc_el.text:
         return desc_el.text.strip()
+    return None
+
+
+def _extract_extraction(input_data_el: ET.Element) -> dict | None:
+    ext = input_data_el.find("{*}extensionElements")
+    if ext is None:
+        return None
+    for child in ext:
+        if child.tag.rsplit("}", 1)[-1] != "extraction":
+            continue
+        try:
+            payload = json.loads("".join(child.itertext()).strip())
+        except (TypeError, json.JSONDecodeError):
+            logger.warning("Ignoring malformed DMN extraction annotation")
+            return None
+        return payload if isinstance(payload, dict) else None
     return None
 
 
@@ -133,30 +156,34 @@ def _parse_dmn_metadata(dmn_xml: str) -> DecisionModelSummary:
     root = ET.fromstring(dmn_xml)
 
     model_name = root.get("name", "unknown")
-    model_id = model_name.lower().replace(" ", "-")
+    stable_id = decision_model_id(model_name)
+    root_id = root.get("id")
+    model_id = root_id if root_id == stable_id else stable_id
 
     inputs = []
-    for input_data in root.findall(f"{{{DMN_NS}}}inputData"):
-        var = input_data.find(f"{{{DMN_NS}}}variable")
+    for input_data in root.findall("{*}inputData"):
+        var = input_data.find("{*}variable")
         if var is not None:
             codes = _extract_codes(input_data)
             desc = _extract_description(input_data)
+            extraction = _extract_extraction(input_data)
             inputs.append(DecisionVariable(
                 name=var.get("name", ""),
                 type=var.get("typeRef", "string"),
                 codes=codes or None,
                 description=desc,
+                extraction=extraction,
             ))
 
     if not inputs:
         seen_names: set[str] = set()
-        for decision in root.findall(f"{{{DMN_NS}}}decision"):
-            dt = decision.find(f"{{{DMN_NS}}}decisionTable")
+        for decision in root.findall("{*}decision"):
+            dt = decision.find("{*}decisionTable")
             if dt is not None:
-                for inp in dt.findall(f"{{{DMN_NS}}}input"):
-                    input_expr = inp.find(f"{{{DMN_NS}}}inputExpression")
+                for inp in dt.findall("{*}input"):
+                    input_expr = inp.find("{*}inputExpression")
                     if input_expr is not None:
-                        text_el = input_expr.find(f"{{{DMN_NS}}}text")
+                        text_el = input_expr.find("{*}text")
                         var_name = text_el.text.strip() if text_el is not None and text_el.text else inp.get("label", "")
                         if var_name and var_name not in seen_names:
                             seen_names.add(var_name)
@@ -166,10 +193,10 @@ def _parse_dmn_metadata(dmn_xml: str) -> DecisionModelSummary:
                             ))
 
     outputs = []
-    for decision in root.findall(f"{{{DMN_NS}}}decision"):
-        dt = decision.find(f"{{{DMN_NS}}}decisionTable")
+    for decision in root.findall("{*}decision"):
+        dt = decision.find("{*}decisionTable")
         if dt is not None:
-            for output in dt.findall(f"{{{DMN_NS}}}output"):
+            for output in dt.findall("{*}output"):
                 outputs.append(DecisionVariable(
                     name=output.get("name", ""),
                     type=output.get("typeRef", "string"),
@@ -193,8 +220,66 @@ def _evaluate_jit(dmn_xml: str, inputs: dict) -> dict:
         json={"dmn_xml_base64": dmn_b64, "inputs": inputs},
         timeout=30,
     )
+    if 400 <= r.status_code < 500:
+        raise DmnEngineError.from_response(r)
     r.raise_for_status()
     return r.json()
+
+
+@mlflow.trace(span_type="TOOL", name="validate_dmn_with_engine")
+def _validate_dmn_with_engine(dmn_xml: str) -> dict | None:
+    """Validate DMN with KIE, returning ``None`` when the engine is unavailable.
+
+    Deployment remains available when the optional decision engine is down. The
+    caller distinguishes that fail-open path from an engine response with
+    ``valid: false`` and rejects only the latter.
+    """
+    dmn_b64 = base64.b64encode(dmn_xml.encode()).decode()
+    try:
+        response = requests.post(
+            f"{KOGITO_URL}/jit/dmn/validate",
+            json={"dmn_xml_base64": dmn_b64},
+            timeout=30,
+        )
+    except (requests.ConnectionError, requests.Timeout) as exc:
+        logger.warning("DMN engine validation unavailable; accepting model provisionally: %s", exc)
+        return None
+    except requests.RequestException as exc:
+        logger.error("DMN engine validation request failed: %s", exc)
+        return {"valid": False, "messages": [{
+            "severity": "ERROR",
+            "text": f"decision engine validation request failed: {exc}",
+        }]}
+    if response.status_code >= 400:
+        body = getattr(response, "text", "")[:500]
+        logger.error("DMN engine validation returned HTTP %s: %s", response.status_code, body)
+        return {"valid": False, "messages": [{
+            "severity": "ERROR",
+            "text": f"decision engine validation returned HTTP {response.status_code}: {body}",
+        }]}
+    try:
+        result = response.json()
+    except ValueError:
+        result = None
+    if not isinstance(result, dict) or "valid" not in result:
+        body = getattr(response, "text", "")[:500]
+        logger.error("Decision engine returned invalid validation response: %s", body)
+        return {"valid": False, "messages": [{
+            "severity": "ERROR",
+            "text": f"decision engine validation returned invalid JSON: {body}",
+        }]}
+    return result
+
+
+def _validation_failure_response(validation: dict) -> JSONResponse:
+    messages = validation.get("messages", [])
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "DMN engine validation failed",
+            "messages": messages,
+        },
+    )
 
 
 # --- Health ---
@@ -317,7 +402,12 @@ async def update_careplan_status(careplan_id: str, request: Request):
 
 
 @app.post("/api/v1/decisions/models", status_code=201)
-async def deploy_decision_model(request: Request, source_cpg: str | None = None):
+async def deploy_decision_model(
+    request: Request,
+    source_cpg: str | None = None,
+    validate_only: bool = False,
+    replace: bool = False,
+):
     content_type = request.headers.get("content-type", "")
     body = await request.body()
     dmn_xml = body.decode("utf-8")
@@ -327,8 +417,28 @@ async def deploy_decision_model(request: Request, source_cpg: str | None = None)
     except ET.ParseError as e:
         raise HTTPException(status_code=400, detail=f"Invalid DMN XML: {e}")
 
+    validation = _validate_dmn_with_engine(dmn_xml)
+    if validation is not None and not validation.get("valid", False):
+        return _validation_failure_response(validation)
+    if validate_only:
+        if validation is None:
+            raise HTTPException(status_code=503, detail="Decision engine validation unavailable")
+        return JSONResponse(status_code=200, content=validation)
+
     if source_cpg:
         summary.source_cpg = source_cpg
+
+    existing = _dynamic_models.get(summary.id)
+    if (existing and source_cpg and existing["summary"].source_cpg
+            and existing["summary"].source_cpg != source_cpg and not replace):
+        logger.warning("Rejecting model id collision: %s (%s vs %s)", summary.id,
+                       existing["summary"].source_cpg, source_cpg)
+        return JSONResponse(status_code=409, content={
+            "error": "Decision model id already belongs to another source CPG",
+            "model_id": summary.id,
+            "existing_source_cpg": existing["summary"].source_cpg,
+            "source_cpg": source_cpg,
+        })
 
     _dynamic_models[summary.id] = {
         "summary": summary,
@@ -372,6 +482,11 @@ async def evaluate_decision(model_id: str, request: Request):
     try:
         result = _evaluate_jit(model["dmn_xml"], inputs)
         return result
+    except DmnEngineError as exc:
+        logger.warning("DMN engine rejected evaluation for %s: %s", model_id, exc.error)
+        return JSONResponse(status_code=exc.status_code, content={
+            "error": exc.error, "messages": exc.messages,
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Decision evaluation failed: {e}")
 

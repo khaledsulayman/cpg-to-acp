@@ -1,4 +1,5 @@
 import {
+  Alert,
   Card,
   CardBody,
   CardTitle,
@@ -69,6 +70,36 @@ export function DecisionReviewPage({ run }: DecisionReviewPageProps) {
               )}
             </CardTitle>
             <CardBody>
+              {decision.escalated && (
+                <Alert
+                  variant="danger"
+                  title={`Escalated for human review: ${decision.escalation_reason ?? 'unknown'}`}
+                  isInline
+                  style={{ marginBottom: 8 }}
+                >
+                  {decision.escalation_errors?.length ? (
+                    <ul>
+                      {decision.escalation_errors.map((error, errorIndex) => (
+                        <li key={errorIndex}>{error}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </Alert>
+              )}
+
+              {decision.validation_warnings?.map((warning, warningIndex) => (
+                <Alert
+                  key={warningIndex}
+                  variant="warning"
+                  title="DMN validation warning"
+                  isInline
+                  isPlain
+                  style={{ marginBottom: 8 }}
+                >
+                  {warning}
+                </Alert>
+              ))}
+
               {decision.dmn_xml && (
                 <DmnDecisionTable xml={decision.dmn_xml} />
               )}

@@ -35,7 +35,7 @@ Set `MLFLOW_TRACKING_URI` to point your services at the MLflow server:
 
 ### cpg-ingester (CLI tools)
 - `parse_cpg_pdf` — Docling PDF parsing
-- `extract_dmn` — LLM-driven DMN extraction (OpenAI SDK calls auto-captured)
+- LangGraph pipeline nodes (DMN generation/review, recommendation extraction) via `mlflow.langchain.autolog()`
 - `deploy_dmn` — DMN deployment to acp-writer
 
 ## Viewing traces

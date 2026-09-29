@@ -108,6 +108,26 @@ paths:
         engine. The model becomes available for care plan generation and
         direct evaluation.
       tags: [decisions]
+      parameters:
+        - name: source_cpg
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: validate_only
+          in: query
+          required: false
+          description: Validate the DMN with the engine without storing it.
+          schema:
+            type: boolean
+            default: false
+        - name: replace
+          in: query
+          required: false
+          description: Replace an existing model when its source CPG differs.
+          schema:
+            type: boolean
+            default: false
       requestBody:
         required: true
         content:
@@ -124,6 +144,24 @@ paths:
                 $ref: "#/components/schemas/DecisionModelSummary"
         "400":
           description: Invalid DMN XML
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: DMN failed engine validation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DMNValidationError"
+        "409":
+          description: Model ID belongs to a different source CPG
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Engine validation unavailable for validate-only requests
           content:
             application/json:
               schema:
@@ -213,6 +251,12 @@ paths:
           description: Model not found
         "400":
           description: Invalid input data
+        "422":
+          description: DMN engine rejected the evaluation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DMNValidationError"
 
   # --- Knowledge Base (Recommendations) ---
 
@@ -564,10 +608,43 @@ components:
           enum: [string, number, boolean]
         description:
           type: string
+        extraction:
+          type: object
+          nullable: true
+          properties:
+            function:
+              type: string
+            params:
+              type: object
+              additionalProperties: true
         codes:
           type: array
           items:
             type: string
+
+    DMNValidationMessage:
+      type: object
+      required: [severity, text]
+      properties:
+        severity:
+          type: string
+          enum: [TRACE, INFO, WARN, ERROR]
+        text:
+          type: string
+        source_id:
+          type: string
+          description: KIE source identifier for the validation message, when available
+
+    DMNValidationError:
+      type: object
+      required: [error, messages]
+      properties:
+        error:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/DMNValidationMessage"
 
     # --- Knowledge (Recommendations) ---
 

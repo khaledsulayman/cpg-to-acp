@@ -13,6 +13,7 @@ from acp_writer.nodes.dmn_executor import (
     dmn_executor,
 )
 from acp_writer.tools.bundle_inventory import build_bundle_inventory
+from acp_writer.tools.dmn_evaluation import DmnEngineError
 from acp_writer.store.embedding import FakeEmbeddingProvider
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -172,6 +173,29 @@ class TestDMNExecutor:
         result = dmn_executor(state)
         assert len(result["dmn_results"]) == 1
         assert result["dmn_results"][0]["error"] == "Model not deployed"
+
+    @patch("acp_writer.nodes.dmn_executor.get_evaluation_client")
+    def test_engine_messages_are_recorded_in_audit(self, mock_client_factory):
+        summary = _deploy_dmn("treatment-recommendation.dmn")
+        mock_client = mock_client_factory.return_value
+        mock_client.evaluate.side_effect = DmnEngineError(
+            422,
+            [{"severity": "ERROR", "text": "DMN compilation failed"}],
+            "DMN compilation errors",
+        )
+        state = {
+            "ips_bundle": _load_bundle("patient-bundle-medication.json"),
+            "applicable_dmn_models": [summary.model_dump(mode="json")],
+            "dmn_dependency_graph": [[summary.id]],
+        }
+
+        result = dmn_executor(state)
+
+        audit = result["dmn_results"][0]
+        assert audit["error_status"] == 422
+        assert audit["error_messages"] == [
+            {"severity": "ERROR", "text": "DMN compilation failed"},
+        ]
 
     @patch("acp_writer.api._evaluate_jit")
     def test_successful_evaluation(self, mock_jit):

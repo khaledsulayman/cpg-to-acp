@@ -30,7 +30,7 @@ _CPG_ID = METADATA["cpg_id"]
 DECISIONS = [
     {
         "artifact_id": make_artifact_id(_CPG_ID, "dmn", "Blood Pressure Treatment Threshold", "3. Blood Pressure Thresholds"),
-        "dmn_xml": '<?xml version="1.0" encoding="UTF-8"?>\n<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">\n  <decision id="bp-threshold" name="Blood Pressure Treatment Threshold">\n    <!-- simplified for mock -->\n  </decision>\n</definitions>',
+        "dmn_xml": '<?xml version="1.0" encoding="UTF-8"?>\n<definitions xmlns="https://www.omg.org/spec/DMN/20211108/MODEL/">\n  <decision id="bp-threshold" name="Blood Pressure Treatment Threshold">\n    <!-- simplified for mock -->\n  </decision>\n</definitions>',
         "item": {
             "name": "Blood Pressure Treatment Threshold",
             "type": "decision_table",
@@ -55,7 +55,7 @@ DECISIONS = [
     },
     {
         "artifact_id": make_artifact_id(_CPG_ID, "dmn", "Monitoring Frequency", "6. Monitoring and Follow-up"),
-        "dmn_xml": '<?xml version="1.0" encoding="UTF-8"?>\n<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/">\n  <decision id="monitoring-freq" name="Monitoring Frequency">\n    <!-- simplified for mock -->\n  </decision>\n</definitions>',
+        "dmn_xml": '<?xml version="1.0" encoding="UTF-8"?>\n<definitions xmlns="https://www.omg.org/spec/DMN/20211108/MODEL/">\n  <decision id="monitoring-freq" name="Monitoring Frequency">\n    <!-- simplified for mock -->\n  </decision>\n</definitions>',
         "item": {
             "name": "Monitoring Frequency",
             "type": "decision_table",
@@ -86,6 +86,11 @@ RECOMMENDATIONS = [
         "title": "First-line pharmacological therapy with ACE inhibitor or ARB",
         "content": "For adults with confirmed hypertension and an average BP ≥130/80 mmHg, initiate pharmacological treatment with an ACE inhibitor, ARB, calcium channel blocker, or thiazide diuretic.",
         "recommendation_type": "pharmacological",
+        "escalated": True,
+        "escalation_reason": "reviewer-unparseable",
+        "escalation_errors": [
+            "Automated review could not validate the treatment recommendation."
+        ],
         "section": "4. Pharmacological Treatment",
         "certainty": {
             "strength": "strong-for",
@@ -153,10 +158,14 @@ ASSEMBLY_REPORT: dict[str, Any] = {
 
 ESCALATED_ITEMS = [
     {
+        "id": "rec-renal-denervation",
         "name": "Renal denervation for resistant hypertension",
         "type": "recommendation",
         "section": "7. Special Populations",
-        "reason": "Automated reviewers could not verify evidence quality — emerging intervention with limited long-term data.",
+        "escalation_reason": "reviewer-unparseable",
+        "escalation_errors": [
+            "Automated reviewers could not verify evidence quality — emerging intervention with limited long-term data."
+        ],
     },
 ]
 
@@ -279,6 +288,18 @@ RUN_DETAILS: dict[str, dict[str, Any]] = {
         "sectionMap": SECTION_MAP,
         "decisions": DECISIONS,
         "recommendations": RECOMMENDATIONS,
+        "recommendationEscalations": [
+            {
+                "id": "section-special-populations",
+                "name": "Section: 7. Special Populations",
+                "type": "recommendation",
+                "section": "7. Special Populations",
+                "escalation_reason": "no-source-text",
+                "escalation_errors": [
+                    "No source text was available to verify recommendations in this section."
+                ],
+            }
+        ],
     },
     "run-003": {
         **RUNS["run-003"],

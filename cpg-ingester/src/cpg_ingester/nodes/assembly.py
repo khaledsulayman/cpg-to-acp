@@ -43,16 +43,45 @@ def _resolve_cross_references(recommendations: list[dict], dmn_results: list[dic
     return recommendations
 
 
+def _collect_escalations(
+    dmn_results: list[dict],
+    recommendations: list[dict],
+    recommendation_escalations: list[dict] | None = None,
+) -> list[dict]:
+    """Gather every result flagged for human review, with its reason and errors."""
+    escalated = []
+    for dmn in dmn_results:
+        if dmn.get("escalated"):
+            escalated.append({
+                "type": "decision",
+                "name": dmn.get("item", {}).get("name", "?"),
+                "escalation_reason": dmn.get("escalation_reason", ""),
+                "escalation_errors": dmn.get("escalation_errors", []),
+            })
+    for rec in recommendations:
+        if isinstance(rec, dict) and rec.get("escalated"):
+            escalated.append({
+                "type": "recommendation",
+                "id": rec.get("id", "?"),
+                "name": rec.get("title") or rec.get("id", "?"),
+                "escalation_reason": rec.get("escalation_reason", ""),
+                "escalation_errors": rec.get("escalation_errors", []),
+            })
+    escalated.extend(recommendation_escalations or [])
+    return escalated
+
+
 def _check_integrity(recommendations: list[dict], dmn_results: list[dict], cpg_metadata: dict) -> list[str]:
     """Run integrity checks on assembled output."""
     errors = []
     cpg_id = cpg_metadata.get("cpg_id", "")
 
-    rec_ids = [r.get("id") for r in recommendations]
+    rec_ids = [r.get("id") for r in recommendations if r.get("id") is not None]
     if len(rec_ids) != len(set(rec_ids)):
         errors.append("Duplicate recommendation IDs found")
 
-    dmn_ids = [d.get("decision_model_summary", {}).get("id") for d in dmn_results]
+    dmn_ids = [d.get("decision_model_summary", {}).get("id") for d in dmn_results
+               if d.get("decision_model_summary", {}).get("id") is not None]
     if len(dmn_ids) != len(set(dmn_ids)):
         errors.append("Duplicate decision model IDs found")
 
@@ -95,11 +124,11 @@ def assembly(state: dict) -> dict:
     """Assemble all validated outputs from DMN and Rec tracks."""
     logger.info("── Assembly ──")
     cpg_metadata = state.get("cpg_metadata", {})
-    item_manifest = state.get("item_manifest", [])
     output_dir = state.get("output_dir", "output")
 
     dmn_results = state.get("dmn_results") or []
     all_recs = state.get("recommendation_results") or []
+    recommendation_escalations = state.get("recommendation_escalations") or []
     if not dmn_results and not all_recs:
         dmn_results, all_recs = _collect_from_output_dir(output_dir)
 
@@ -110,10 +139,12 @@ def assembly(state: dict) -> dict:
 
     all_recs = _resolve_cross_references(all_recs, dmn_results)
 
-    escalated = []
-    for item in item_manifest:
-        if item.get("escalated"):
-            escalated.append(item)
+    # Per-recommendation escalations travel on recommendation objects. Empty or
+    # crashed sections use the separate section-level list so the bundle stays
+    # a valid list of recommendations.
+    escalated = _collect_escalations(
+        dmn_results, all_recs, recommendation_escalations,
+    )
 
     integrity_errors = _check_integrity(all_recs, dmn_results, cpg_metadata)
     if integrity_errors:

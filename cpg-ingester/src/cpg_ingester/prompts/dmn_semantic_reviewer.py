@@ -6,6 +6,9 @@ and accuracy. You are NOT the engineer who wrote this DMN — your job is to \
 find mistakes by comparing the generated decision table against the source \
 clinical guideline text.
 
+Technical XML, DMN, and FEEL validity has already been checked mechanically. \
+Focus this review exclusively on clinical fidelity to the source CPG.
+
 ## Review method: claim-level decomposition
 
 Do NOT review the DMN holistically ("looks reasonable"). Instead, decompose \
@@ -30,9 +33,24 @@ source treats separately is wrong.
 5. **Completeness claims**: Are there decision criteria in the source that \
 the DMN does not capture? Missing rules are as dangerous as wrong rules.
 
-6. **Hit policy claim**: Is the hit policy appropriate for how the source \
-organizes the decision? Priority-ordered rules need FIRST; mutually \
-exclusive rules need UNIQUE.
+6. **Hit policy claim**: does the hit policy match how the source organizes the \
+decision? Mutually exclusive rules → UNIQUE; ordered or overriding rules → FIRST \
+or PRIORITY (both acceptable); COLLECT only when several rules contribute results. \
+Flag CRITICAL only when the policy would change which rule fires (e.g. COLLECT or \
+ANY on a table that must return one result, UNIQUE on overlapping rules, or an \
+order-dependent policy whose rule order contradicts the source).
+
+7. **Unit and abbreviation claims**: Verify units and abbreviations match the \
+source exactly (for example, mg versus mcg or mmol/L versus mg/dL). A unit \
+conversion that changes the clinical meaning is a CRITICAL discrepancy.
+
+8. **Guarded-population claims**: Verify contraindications, exclusions, and \
+special-population limits in the source are represented by conditions, rules, \
+or explicit exclusions in the DMN.
+
+9. **Hard-rule claims**: Verify every source instruction such as "do not", \
+"avoid", or "never" maps to an output, exclusion, or other enforceable \
+decision rule.
 
 ## Severity classification
 
@@ -41,8 +59,8 @@ Classify each discrepancy as CRITICAL or MINOR:
 - **CRITICAL**: Changes clinical behavior. Examples: wrong numeric \
 threshold (135 vs 140), fabricated input variable not in the source, \
 missing rule that changes which patients get treated, wrong output \
-action (medication when source says lifestyle only), hit policy that \
-produces incorrect priority ordering.
+action (medication when source says lifestyle only), or a hit policy that \
+changes which overlapping rule fires.
 - **MINOR**: Structural choices that do not change clinical outcomes. \
 Examples: column ordering differences, naming conventions (camelCase \
 vs snake_case), grouping of related outputs into one vs multiple \
@@ -68,9 +86,10 @@ Generated DMN XML:
 Source CPG content (the text this DMN was derived from):
 {source_pages}
 
-For each atomic claim, state whether it is VERIFIED or DISCREPANCY. \
-Classify discrepancies as CRITICAL or MINOR per the severity rules. \
-Only set discrepancies_found=true if CRITICAL issues exist.
+For each atomic claim, state whether it is VERIFIED or DISCREPANCY and include \
+the required severity field (CRITICAL or MINOR). Include a concise feedback \
+string for every DISCREPANCY. Only CRITICAL discrepancy claims trigger repair; \
+MINOR claims are recorded for information.
 
 Respond with a JSON object:
 {{
@@ -78,11 +97,14 @@ Respond with a JSON object:
     {{
       "claim": "Source specifies systolic BP threshold of 140 mmHg",
       "verdict": "VERIFIED",
+      "severity": "CRITICAL",
       "evidence": "Source text: 'Patients with Stage 2 hypertension (SBP >= 140)'"
     }},
     {{
       "claim": "DMN includes eGFR as an input variable",
       "verdict": "DISCREPANCY",
+      "severity": "CRITICAL",
+      "feedback": "Source mentions eGFR-based dosing but DMN has no eGFR input",
       "evidence": "Source mentions eGFR-based dosing but DMN has no eGFR input"
     }}
   ],

@@ -41,6 +41,9 @@ class DMNAuditEntry(BaseModel):
         description="FHIR resource references used as input sources",
     )
     timestamp: datetime
+    error: str | None = None
+    error_status: int | None = None
+    error_messages: list[dict[str, Any]] | None = None
 
 
 class ActivityType(str, Enum):

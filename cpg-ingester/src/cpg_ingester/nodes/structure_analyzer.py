@@ -120,7 +120,7 @@ def _parse_llm_json(text: str) -> dict | list:
             return value
         except json.JSONDecodeError:
             pass
-    raise ValueError("no JSON value found in model reply")
+    raise json.JSONDecodeError("no JSON value found in model reply", text, 0)
 
 
 @mlflow.trace(name="structure_analyzer")

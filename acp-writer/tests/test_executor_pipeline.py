@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from acp_writer.nodes.dmn_executor import _extract_input_value
+from acp_writer.nodes.dmn_executor import _extract_input_value, resolve_inputs
 from acp_writer.tools.bundle_inventory import build_bundle_inventory
 from acp_writer.tools.concept_resolution import ResolutionResult
 from acp_writer.tools.terminology_lookup import LookupResult
@@ -67,6 +67,104 @@ class TestPipelineWiredInExecutor:
 
         assert value == 138
         assert ref is not None
+
+    def test_explicit_temporal_extraction_precedes_most_recent(self):
+        bundle = _load("htn-temporal-01.json")
+        inventory = build_bundle_inventory(bundle)
+        value, ref, audit = _extract_input_value(
+            bundle, "Systolic BP", "number", {},
+            inventory=inventory,
+            extraction={"function": "observation_count", "params": {
+                "code": "http://loinc.org|8480-6", "duration": "P3M",
+            }},
+            reference_date="2026-06-01",
+        )
+        assert value == 5
+        assert ref is not None
+        assert audit["match_basis"] == "decision_variable_extraction"
+
+    def test_consecutive_above_temporal_extraction(self):
+        bundle = _load("htn-temporal-01.json")
+        value, ref, audit = _extract_input_value(
+            bundle, "Systolic BP", "number", {},
+            extraction={"function": "consecutive_above", "params": {
+                "code": "http://loinc.org|8480-6", "threshold": 140,
+            }},
+            reference_date="2026-04-28",
+        )
+        assert value == 3
+        assert ref is not None
+        assert audit["match_basis"] == "decision_variable_extraction"
+        assert audit.get("degraded") is not True
+
+    def test_observations_in_window_temporal_extraction(self):
+        bundle = _load("htn-temporal-01.json")
+        value, ref, audit = _extract_input_value(
+            bundle, "Systolic BP", "number", {},
+            extraction={"function": "observations_in_window", "params": {
+                "code": "http://loinc.org|8480-6", "duration": "P3M",
+            }},
+            reference_date="2026-06-01",
+        )
+        assert len(value) == 5
+        assert ref is not None
+        assert audit["match_basis"] == "decision_variable_extraction"
+        assert audit.get("degraded") is not True
+
+    def test_rate_of_change_temporal_extraction(self):
+        bundle = _load("htn-temporal-01.json")
+        value, ref, audit = _extract_input_value(
+            bundle, "Systolic BP", "number", {},
+            extraction={"function": "rate_of_change", "params": {
+                "code": "http://loinc.org|8480-6", "duration": "P1Y",
+            }},
+            reference_date="2026-06-01",
+        )
+        assert isinstance(value, (int, float))
+        assert ref is not None
+        assert audit["match_basis"] == "decision_variable_extraction"
+        assert audit.get("degraded") is not True
+
+    def test_cross_resource_temporal_extraction(self):
+        bundle = _load("htn-temporal-01.json")
+        value, ref, audit = _extract_input_value(
+            bundle, "Follow-up BP", "boolean", {},
+            extraction={"function": "cross_resource_temporal", "params": {
+                "anchor_code": "http://www.nlm.nih.gov/research/umls/rxnorm|329528",
+                "target_code": "http://loinc.org|8480-6", "window": "P6M",
+            }},
+            reference_date="2026-06-01",
+        )
+        assert value is True
+        assert ref is not None
+        assert audit["match_basis"] == "decision_variable_extraction"
+        assert audit.get("degraded") is not True
+
+    def test_temporal_extraction_preserves_all_provenance_references(self):
+        bundle = _load("htn-temporal-01.json")
+        inputs, refs, audit = resolve_inputs(
+            [{"name": "Systolic BP", "type": "number", "extraction": {
+                "function": "observation_count",
+                "params": {"code": "http://loinc.org|8480-6", "duration": "P3M"},
+            }}],
+            bundle, None, {}, reference_date="2026-06-01",
+        )
+        assert inputs["Systolic BP"] == 5
+        assert len(refs) == 5
+        assert all(reference.startswith("Observation/") for reference in refs)
+        assert audit["Systolic BP"]["match_basis"] == "decision_variable_extraction"
+
+    def test_failed_extraction_is_authoritative(self):
+        bundle = _load("messy-data-01.json")
+        with patch("acp_writer.nodes.dmn_executor._extract_via_pipeline") as pipeline:
+            value, ref, audit = _extract_input_value(
+                bundle, "Systolic BP", "number", {}, inventory=MagicMock(),
+                extraction={"function": "not_a_function", "params": {}},
+            )
+        assert value is None
+        assert ref == []
+        assert audit["match_basis"] == "decision_variable_extraction"
+        pipeline.assert_not_called()
 
     def test_absent_concept_definitive_miss(self):
         """Concept genuinely absent from bundle → definitive miss → False."""

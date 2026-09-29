@@ -31,6 +31,7 @@ class CPGIngesterState(TypedDict, total=False):
     # Phase 2 outputs
     dmn_results: list[dict]
     recommendation_results: list[dict]
+    recommendation_escalations: list[dict]
     escalated_items: list[dict]
     assembly_report: dict
     delivery_status: dict
@@ -47,11 +48,18 @@ class DMNPipelineState(TypedDict, total=False):
     llm_api_key: str
     output_dir: str
     dmn_xml: str
-    decision_model_summary: dict
+    cpg_metadata: dict
     syntax_errors: list[str]
+    syntax_warnings: list[str]
     semantic_discrepancies: list[str]
-    review_count: int
+    engine_errors: list[str]
+    engine_validation_warnings: list[str]
+    syntax_retry_count: int
+    semantic_retry_count: int
     escalated: bool
+    escalation_reason: str
+    escalation_errors: list[str]
+    force_escalate: bool
 
 
 class RecPipelineState(TypedDict, total=False):
@@ -70,3 +78,6 @@ class RecPipelineState(TypedDict, total=False):
     semantic_discrepancies: list[str]
     review_count: int
     escalated: bool
+    escalation_reason: str
+    escalation_errors: list[str]
+    force_escalate: bool

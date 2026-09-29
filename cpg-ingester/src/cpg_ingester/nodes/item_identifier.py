@@ -2,11 +2,19 @@
 
 import json
 import logging
+import re
 import time
 import uuid
 
 import mlflow
-from cpg_contracts import content_to_text, get_llm
+from pydantic import ValidationError
+from cpg_contracts import (
+    Extraction,
+    content_to_text,
+    decision_model_id,
+    get_llm,
+)
+from cpg_ingester.validators.dmn_syntax import VALID_HIT_POLICIES
 from cpg_ingester.nodes.structure_analyzer import _parse_llm_json
 from cpg_ingester.output import write_artifact
 from cpg_ingester.prompts.item_identifier import (
@@ -26,7 +34,7 @@ VALID_STRENGTHS = {
     "conditional-against", "strong-against",
 }
 VALID_EVIDENCE = {"high", "moderate", "low", "very-low", "ungraded"}
-VALID_HIT_POLICIES = {"UNIQUE", "FIRST", "COLLECT", "ANY", "PRIORITY", "RULE ORDER"}
+CODE_TOKEN_RE = re.compile(r"^https?://[^|\s]+\|[^|\s]+$")
 
 
 def _assign_guids(manifest: list[dict]) -> list[dict]:
@@ -36,6 +44,8 @@ def _assign_guids(manifest: list[dict]) -> list[dict]:
         guid = str(uuid.uuid4())
         item["id"] = guid
         name = item.get("name") or item.get("title", "")
+        if item.get("type") == "decision":
+            item["model_id"] = decision_model_id(name)
         name_to_guid[name] = guid
 
     for item in manifest:
@@ -66,6 +76,28 @@ def _validate_decision(item: dict) -> list[str]:
         issues.append(f"Invalid hit_policy: {item['hit_policy']}")
     if not item.get("inputs"):
         issues.append("Decision has no inputs")
+    for input_variable in item.get("inputs", []):
+        codes = input_variable.get("codes")
+        if codes is not None:
+            if not isinstance(codes, list) or any(
+                not isinstance(code, str) or not CODE_TOKEN_RE.fullmatch(code)
+                for code in codes
+            ):
+                issues.append(
+                    f"Decision input '{input_variable.get('name', '?')}' has invalid codes"
+                )
+        extraction = input_variable.get("extraction")
+        if extraction is not None:
+            if not isinstance(extraction, dict):
+                issues.append(f"Decision input '{input_variable.get('name', '?')}' has invalid extraction")
+                continue
+            try:
+                Extraction.model_validate(extraction)
+            except ValidationError as exc:
+                issues.append(
+                    f"Decision input '{input_variable.get('name', '?')}' extraction invalid: "
+                    f"{exc.errors()}"
+                )
     return issues
 
 
@@ -149,7 +181,7 @@ def item_identifier(state: dict) -> dict:
         section_heading = item.get("section", "")
         matching = [s for s in section_map if section_heading in s.get("heading", "")]
         if matching:
-            item["source_pages"] = f"pages {matching[0].get('page_start', '?')}-{matching[0].get('page_end', '?')}"
+            item["source_page_range"] = f"pages {matching[0].get('page_start', '?')}-{matching[0].get('page_end', '?')}"
 
     write_artifact(output_dir, "manifest.json", manifest)
 

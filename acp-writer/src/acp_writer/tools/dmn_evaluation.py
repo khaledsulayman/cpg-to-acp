@@ -23,6 +23,34 @@ class ModelNotDeployed(Exception):
     """Raised when a DMN model is not deployed on the evaluation service."""
 
 
+class DmnEngineError(Exception):
+    """A structured 4xx response from the DMN engine."""
+
+    def __init__(self, status_code: int, messages: list[dict], error: str = "DMN engine error"):
+        self.status_code = status_code
+        self.messages = messages
+        self.error = error
+        super().__init__(f"{error} (HTTP {status_code})")
+
+    @classmethod
+    def from_response(cls, response: requests.Response) -> "DmnEngineError":
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = {}
+        messages = payload.get("messages", []) if isinstance(payload, dict) else []
+        if not isinstance(messages, list):
+            messages = [{"severity": "ERROR", "text": str(messages)}]
+        if not messages and isinstance(payload, dict) and payload.get("error"):
+            messages = [{"severity": "ERROR", "text": str(payload["error"])}]
+        return cls(
+            status_code=response.status_code,
+            messages=messages,
+            error=str(payload.get("error", "DMN engine error"))
+            if isinstance(payload, dict) else "DMN engine error",
+        )
+
+
 class DmnEvaluationClient(Protocol):
     def evaluate(self, model_id: str, inputs: dict) -> dict:
         """Evaluate a DMN model with pre-resolved inputs.
@@ -68,6 +96,9 @@ class HttpEvaluationClient:
 
         if r.status_code == 404:
             raise ModelNotDeployed(f"Model {model_id} not deployed on {self.base_url}")
+
+        if 400 <= r.status_code < 500:
+            raise DmnEngineError.from_response(r)
 
         r.raise_for_status()
         data = r.json()

@@ -1,0 +1,240 @@
+# Golden DMN corpus manifest for the DMN generation-quality benchmark.
+#
+# Each entry ties a golden DMN file to the exact source section that justifies it,
+# plus the expected structure (inputs / outputs / hit policy) and representative
+# inputs used for the compile/execution check. Source-section references point at
+# the CPG markdown so the derivation tables (clinical sign-off) stay verifiable.
+#
+# Goldens are DMN 1.4 (language namespace 20211108) with FEEL expressions wrapped
+# in CDATA. The golden-diff is namespace- and CDATA-tolerant, so a 1.3 or entity-
+# escaped serialization of the same logic still scores identically against them.
+
+corpora:
+  hypertension:
+    source_cpg: data/synthetic-hypertension-cpg.md
+    decisions:
+      - id: treatment-recommendation
+        name: Treatment Recommendation
+        golden: data/golden/treatment-recommendation.dmn
+        source_section:
+          heading: "3.2 Treatment Decision"
+          table: "Decision Table 1: Treatment Recommendation"
+          markdown_lines: "75-101"
+        hit_policy: FIRST
+        inputs:
+          - {name: Systolic BP, type: number, description: "Systolic blood pressure in mmHg"}
+          - {name: Has Diabetes, type: boolean, description: "Whether diabetes is present"}
+          - {name: Has Kidney Disease, type: boolean, description: "Whether kidney disease is present"}
+        outputs:
+          - {name: Action, type: string}
+          - {name: Medication, type: string}
+          - {name: Dose, type: string}
+          - {name: Follow Up Weeks, type: number}
+        representative_inputs:
+          - inputs: {Systolic BP: 145, Has Diabetes: false, Has Kidney Disease: false}
+            expect: {Action: "Start medication"}
+          - inputs: {Systolic BP: 135, Has Diabetes: true, Has Kidney Disease: false}
+            expect: {Action: "Start medication"}
+          - inputs: {Systolic BP: 135, Has Diabetes: false, Has Kidney Disease: false}
+            expect: {Action: "Lifestyle modification only"}
+          - inputs: {Systolic BP: 125, Has Diabetes: false, Has Kidney Disease: false}
+            expect: {Action: "Lifestyle modification only"}
+        assumption_rules: [rule_9]
+
+      - id: monitoring-plan
+        name: Monitoring Plan
+        golden: data/golden/monitoring-plan.dmn
+        source_section:
+          heading: "3.3 Monitoring Plan"
+          table: "Decision Table 2: Monitoring Plan"
+          markdown_lines: "103-122"
+        hit_policy: FIRST
+        inputs:
+          - {name: Treatment Action, type: string, description: "Treatment action produced by the treatment decision"}
+          - {name: Has Kidney Disease, type: boolean, description: "Whether kidney disease is present"}
+        outputs:
+          - {name: Lab Order, type: string}
+          - {name: Lab Timing Weeks, type: number}
+        representative_inputs:
+          - inputs: {Treatment Action: "Start medication", Has Kidney Disease: true}
+            expect: {Lab Timing Weeks: 2}
+          - inputs: {Treatment Action: "Start medication", Has Kidney Disease: false}
+            expect: {Lab Timing Weeks: 4}
+          - inputs: {Treatment Action: "Lifestyle modification only", Has Kidney Disease: false}
+            expect: {Lab Order: "-"}
+
+# The synthetic hypertension CPG defines exactly two decision tables (§3.2,
+# §3.3); §3.1 and §3.4 are not conditional logic.
+  diabetes:
+    source_cpg: data/synthetic-diabetes-cpg.md
+    decisions:
+      - id: diabetes-treatment
+        name: Glycemic Treatment Decision
+        golden: data/golden/diabetes-treatment.dmn
+        source_section:
+          heading: "2.1 Glycemic Treatment Decision"
+        hit_policy: UNIQUE
+        inputs:
+          - {name: HbA1c, type: number, description: "HbA1c measurement in percent (%)"}
+        outputs:
+          - {name: Treatment, type: string, description: "Current glycemic treatment plan"}
+        representative_inputs:
+          - inputs: {HbA1c: 9.5}
+            expect: {Treatment: "Combination therapy"}
+          - inputs: {HbA1c: 8.0}
+            expect: {Treatment: "Metformin plus lifestyle"}
+      - id: diabetes-monitoring
+        name: Diabetes Monitoring Plan
+        golden: data/golden/diabetes-monitoring.dmn
+        source_section:
+          heading: "2.2 Diabetes Monitoring Plan"
+        hit_policy: UNIQUE
+        inputs:
+          - {name: Treatment, type: string, description: "Current glycemic treatment plan"}
+        outputs:
+          - {name: Follow-up Months, type: number}
+        representative_inputs:
+          - inputs: {Treatment: "Combination therapy"}
+            expect: {"Follow-up Months": 3}
+          - inputs: {Treatment: "Metformin plus lifestyle"}
+            expect: {"Follow-up Months": 6}
+      - id: glycemic-escalation-monitoring
+        name: Glycemic Escalation Monitoring
+        golden: data/golden/glycemic-escalation-monitoring.dmn
+        source_section:
+          heading: "2.3 Glycemic Escalation Monitoring"
+        hit_policy: UNIQUE
+        inputs:
+          - {name: Treatment, type: string, description: "Current glycemic treatment plan"}
+          - name: Elevated HbA1c Count
+            type: number
+            description: "Count of HbA1c measurements at or above 9 in the prior six months"
+            extraction:
+              function: observation_count
+              params:
+                code: "http://loinc.org|4548-4"
+                duration: P6M
+                threshold: 9
+                comparator: ge
+        outputs:
+          - {name: Action, type: string}
+        representative_inputs:
+          - inputs: {Treatment: "Metformin plus lifestyle", Elevated HbA1c Count: 2}
+            expect: {Action: "Escalate to combination therapy"}
+          - inputs: {Treatment: "Metformin plus lifestyle", Elevated HbA1c Count: 1}
+            expect: {Action: "Continue current plan and reassess at the next scheduled interval"}
+          - inputs: {Treatment: "Combination therapy", Elevated HbA1c Count: 2}
+            expect: {Action: "Not applicable"}
+
+  atp_iii:
+    source_cpg: data/atp-iii-cholesterol-cpg.md
+    decisions:
+      - id: adult-lipoprotein-screening
+        name: Adult Lipoprotein Screening and Nonfasting Follow-up
+        golden: data/golden/adult-lipoprotein-screening.dmn
+        source_section:
+          heading: "Risk Assessment: First Step in Risk Management"
+          markdown_lines: "214-218"
+        hit_policy: FIRST
+        inputs:
+          - {name: Age, type: number, description: "Patient age in years"}
+          - {name: Years Since Last Fasting Lipoprotein Profile, type: number, description: "Years since the last fasting lipoprotein profile"}
+          - {name: Testing Is Nonfasting, type: boolean, description: "Whether the current testing opportunity is nonfasting"}
+          - {name: Total Cholesterol, type: number, description: "Total cholesterol in mg/dL"}
+          - {name: HDL Cholesterol, type: number, description: "HDL cholesterol in mg/dL"}
+        outputs:
+          - {name: Recommendation, type: string}
+        assumption_rules: [rule_4, rule_5]
+        representative_inputs:
+          - inputs: {Age: 45, Years Since Last Fasting Lipoprotein Profile: 6, Testing Is Nonfasting: false, Total Cholesterol: 180, HDL Cholesterol: 50}
+            expect: {Recommendation: "Obtain fasting lipoprotein profile"}
+          - inputs: {Age: 45, Years Since Last Fasting Lipoprotein Profile: 1, Testing Is Nonfasting: true, Total Cholesterol: 210, HDL Cholesterol: 50}
+            expect: {Recommendation: "Obtain follow-up fasting lipoprotein profile"}
+          - inputs: {Age: 45, Years Since Last Fasting Lipoprotein Profile: 1, Testing Is Nonfasting: false, Total Cholesterol: 180, HDL Cholesterol: 50}
+            expect: {Recommendation: "No routine test currently due"}
+            assumption: true
+          - inputs: {Age: 45, Years Since Last Fasting Lipoprotein Profile: 1, Testing Is Nonfasting: true, Total Cholesterol: 180, HDL Cholesterol: 50}
+            expect: {Recommendation: "No follow-up fasting profile required"}
+            assumption: true
+      - id: ldl-cholesterol-classification
+        name: LDL Cholesterol Classification
+        golden: data/golden/ldl-cholesterol-classification.dmn
+        source_section:
+          heading: "Risk Assessment: First Step in Risk Management"
+          markdown_lines: "220-228"
+        hit_policy: UNIQUE
+        inputs: [{name: LDL Cholesterol, type: number, description: "LDL cholesterol in mg/dL"}]
+        outputs:
+          - {name: Category, type: string}
+        representative_inputs:
+          - inputs: {LDL Cholesterol: 95}
+            expect: {Category: "Optimal"}
+          - inputs: {LDL Cholesterol: 170}
+            expect: {Category: "High"}
+      - id: total-cholesterol-classification
+        name: Total Cholesterol Classification
+        golden: data/golden/total-cholesterol-classification.dmn
+        source_section:
+          heading: "Risk Assessment: First Step in Risk Management"
+          markdown_lines: "229-232"
+        hit_policy: UNIQUE
+        inputs: [{name: Total Cholesterol, type: number, description: "Total cholesterol in mg/dL"}]
+        outputs: [{name: Category, type: string}]
+        representative_inputs:
+          - inputs: {Total Cholesterol: 180}
+            expect: {Category: "Desirable"}
+          - inputs: {Total Cholesterol: 250}
+            expect: {Category: "High"}
+      - id: hdl-cholesterol-classification
+        name: HDL Cholesterol Classification
+        golden: data/golden/hdl-cholesterol-classification.dmn
+        source_section:
+          heading: "Risk Assessment: First Step in Risk Management"
+          markdown_lines: "233-235"
+        hit_policy: UNIQUE
+        inputs: [{name: HDL Cholesterol, type: number, description: "HDL cholesterol in mg/dL"}]
+        outputs: [{name: Category, type: string}]
+        assumption_rules: [rule_2]
+        representative_inputs:
+          - inputs: {HDL Cholesterol: 35}
+            expect: {Category: "Low"}
+          - inputs: {HDL Cholesterol: 50}
+            expect: {Category: "Not classified"}
+            assumption: true
+          - inputs: {HDL Cholesterol: 65}
+            expect: {Category: "High"}
+      - id: triglyceride-classification
+        name: Triglyceride Classification
+        golden: data/golden/triglyceride-classification.dmn
+        source_section:
+          heading: "Elevated serum triglycerides"
+          markdown_lines: "474-480"
+        hit_policy: UNIQUE
+        inputs: [{name: Triglycerides, type: number, description: "Triglycerides in mg/dL"}]
+        outputs: [{name: Category, type: string}]
+        representative_inputs:
+          - inputs: {Triglycerides: 120}
+            expect: {Category: "Normal"}
+          - inputs: {Triglycerides: 250}
+            expect: {Category: "High"}
+      - id: ldl-lowering-risk-category
+        name: LDL-Lowering Risk Category Assignment
+        golden: data/golden/ldl-lowering-risk-category.dmn
+        source_section:
+          heading: "Risk Assessment: First Step in Risk Management"
+          markdown_lines: "237-274"
+        hit_policy: FIRST
+        inputs:
+          - {name: Established CHD, type: boolean, description: "Whether established coronary heart disease is present"}
+          - {name: Other Clinical Atherosclerotic Disease, type: boolean, description: "Whether other clinical atherosclerotic disease is present"}
+          - {name: Diabetes, type: boolean, description: "Whether diabetes is present"}
+          - {name: Major Risk-Factor Count, type: number, description: "Number of Table 3 major risk factors present (0–5)"}
+          - {name: Ten-Year CHD Risk, type: number, description: "Framingham 10-year CHD risk, percent (0–100)"}
+        outputs:
+          - {name: Risk category, type: string}
+          - {name: LDL goal, type: string}
+        representative_inputs:
+          - inputs: {Established CHD: true, Other Clinical Atherosclerotic Disease: false, Diabetes: false, Major Risk-Factor Count: 0, Ten-Year CHD Risk: 5}
+            expect: {Risk category: "CHD/CHD risk equivalent", "LDL goal": "<100 mg/dL"}
+          - inputs: {Established CHD: false, Other Clinical Atherosclerotic Disease: false, Diabetes: false, Major Risk-Factor Count: 1, Ten-Year CHD Risk: 5}
+            expect: {Risk category: "0-1 risk factor", "LDL goal": "<160 mg/dL"}

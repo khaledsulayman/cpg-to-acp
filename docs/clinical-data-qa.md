@@ -8,8 +8,10 @@ The DMN executor uses a **concept-resolution pipeline** to map variable names to
 
 ```mermaid
 graph TD
-    Q[DMN Input Variable<br/>e.g. 'Has Hypothyroidism'] --> P[Prior DMN Results]
-    P -->|found| R[Return Value +<br/>Audit Trail]
+    Q[DMN Input Variable<br/>e.g. 'Has Hypothyroidism'] --> TX[Explicit temporal extraction]
+    TX -->|found| R[Return Value +<br/>Audit Trail]
+    TX -->|absent or no data| P[Prior DMN Results]
+    P -->|found| R
     P -->|not found| DC[DecisionVariable.codes]
     DC -->|found| R
     DC -->|not found| PL[Concept-Resolution Pipeline]
@@ -36,15 +38,29 @@ graph TD
     style DM fill:#fff3e0
 ```
 
-### Layer 1: Prior DMN Results
+### Layer 1: Explicit extraction metadata
 
-When DMN models are chained (one model's output feeds another's input), the executor checks prior results first. For example, the "Monitoring Plan" model takes "Treatment Action" as input — this value comes from the "Treatment Recommendation" model's output, not from the IPS.
+An explicit `DecisionVariable.extraction` annotation takes precedence when a
+CPG requires a temporal aggregation. It names one of the five temporal
+primitives and carries JSON parameters; the executor records the function,
+parameters, data quality, and FHIR provenance in the audit trail. An explicit
+annotation is authoritative: if it fails or has insufficient data, the input
+is reported unresolved with its temporal audit rather than falling back to a
+most-recent value.
 
-### Layer 2: DecisionVariable.codes
+### Layer 2: Prior DMN Results
 
-If `cpg-ingester` provides clinical terminology codes on DMN input variables (e.g., `["http://loinc.org|8480-6"]` for systolic BP), the executor uses them directly. This is the most reliable path — exact code matching, no ambiguity. (Currently not populated — see GitHub #85.)
+When DMN models are chained (one model's output feeds another's input), the
+executor checks prior results after any explicit extraction annotation. For
+example, the "Monitoring Plan" model takes "Treatment Action" as input — this
+value comes from the "Treatment Recommendation" model's output, not from the
+IPS.
 
-### Layer 3: Concept-Resolution Pipeline
+### Layer 3: DecisionVariable.codes
+
+If `cpg-ingester` provides clinical terminology codes on DMN input variables (e.g., `["http://loinc.org|8480-6"]` for systolic BP), the executor uses them directly. This is the most reliable path — exact code matching, no ambiguity.
+
+### Layer 4: Concept-Resolution Pipeline
 
 The pipeline resolves clinical terms to FHIR data through a cascade of increasingly capable steps:
 
@@ -68,7 +84,11 @@ Each extracted input records:
 - `match_basis` — which pipeline step produced the resolution (cache, terminology, display_text, llm_inventory, definitive_miss, prior_dmn, decision_variable_codes)
 - `steps_run` — which pipeline steps were attempted
 - `degraded` — whether the LLM step was unavailable
-- FHIR provenance references
+- FHIR provenance references (`fhir_references` is a flat list; temporal extraction may contribute multiple references)
+
+An explicit extraction annotation is authoritative: if it fails, the input is
+reported unresolved with its temporal audit rather than falling back to the
+most-recent observation pipeline.
 
 ## Answer Verification (Guardrails)
 
@@ -105,9 +125,14 @@ All extraction functions are in `acp-writer/src/acp_writer/tools/ips_extractor.p
 
 ## Temporal Queries
 
-> **Note:** The temporal primitives are NOT wired into the production DMN executor. They are reachable from the benchmark backends and the QA agent only. Wiring temporal extraction into production is future work tracked by GitHub issue #86.
+The screening golden's "Years Since Last Fasting Lipoprotein Profile" input is
+currently a documented temporal-data gap because no extraction primitive
+computes time since the last observation.
 
-For questions requiring temporal reasoning, the system builds an in-memory **temporal index** (`acp-writer/src/acp_writer/tools/temporal_index.py`) that groups observations by code and date, then provides five named primitives (`acp-writer/src/acp_writer/tools/temporal_queries.py`):
+For explicit DMN temporal annotations and QA questions, the system builds an
+in-memory **temporal index** (`acp-writer/src/acp_writer/tools/temporal_index.py`)
+that groups observations by code and date, then provides five named primitives
+(`acp-writer/src/acp_writer/tools/temporal_queries.py`):
 
 | Primitive | What it computes | Example |
 |---|---|---|

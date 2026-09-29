@@ -238,7 +238,7 @@ One subgraph instance per decision item in the manifest. Each runs independently
 - Reference examples from the cpg-to-bpm skill's error pattern library (worked examples of correct DMN, common mistakes with fixes)
 - The abbreviation lookup dictionary
 
-The Creator produces DMN 1.4 XML targeting Drools/Kogito (not Trisotech — no proprietary extensions). We target DMN 1.4 because it is the latest version officially supported by Drools/Kogito at conformance level 3. The namespace URL (`https://www.omg.org/spec/DMN/20191111/MODEL/`) is the same across 1.3 and 1.4.
+The Creator produces DMN 1.4 XML targeting Drools/Kogito (not Trisotech — no proprietary extensions). We target DMN 1.4 because it is the latest version officially supported by Drools/Kogito at conformance level 3. The DMN 1.4 language namespaces are version-specific: MODEL is `https://www.omg.org/spec/DMN/20211108/MODEL/` and FEEL is `https://www.omg.org/spec/DMN/20211108/FEEL/` (1.3 used the `20191111` date; DMNDI legitimately stays at `20191111/DMNDI/`). The per-model target `namespace=` attribute is a unique URI per model (e.g. `https://redhat.com/cpg-to-acp/dmn/<model-slug>`), distinct from the language namespace.
 
 **DMN Syntax Validator** — deterministic, no LLM:
 - XML well-formedness (`lxml.etree.parse`)
@@ -248,6 +248,30 @@ The Creator produces DMN 1.4 XML targeting Drools/Kogito (not Trisotech — no p
 - Every input column has a type reference
 - No empty cells in decision rules
 
+The validation ladder is deliberately ordered so cheap deterministic checks run
+before semantic review, while the optional engine check is the final truth
+source for models that will be deployed:
+
+```mermaid
+flowchart LR
+    C[DMN Creator] --> X[XML + DMN 1.4 XSD]
+    X --> L[FEEL and metadata lints]
+    L --> R[Claim-level semantic reviewer]
+    R --> A[Accepted DMN]
+    A --> E{Optional KIE preflight\nDMN_PREFLIGHT_URL}
+    E -->|valid| O[Emit DMN + DecisionModelSummary]
+    E -->|invalid| C
+    E -->|unavailable| O
+    X -->|error| C
+    L -->|error| C
+    R -->|discrepancy| C
+```
+
+Temporal input semantics are carried from the manifest as a JSON
+`acp:extraction` extension on the matching `inputData`. The annotation names a
+supported temporal primitive and explicit parameters; an absent annotation
+retains the default most-recent resolution behavior in acp-writer.
+
 On failure: routes back to DMN Creator with the specific error message. The Creator retries with the error as context.
 
 **DMN Semantic Reviewer** — LLM, adversarial:
@@ -256,7 +280,7 @@ On failure: routes back to DMN Creator with the specific error message. The Crea
 - Must see both the generated DMN XML and the original source text
 - Prompted as a clinical pharmacist reviewing decision support logic (different persona than the Creator)
 
-On failure: routes back to DMN Creator with specific discrepancies ("threshold X in source is Y, but DMN says Z"). Max 2 retry iterations. After 2 failures, the DMN is marked as needing human review and included in output with a `review_needed` flag.
+On failure: routes back to DMN Creator with specific discrepancies ("threshold X in source is Y, but DMN says Z"). Syntax review has a budget of 3 retries and semantic review has a budget of 2. After those budgets are exhausted, the DMN remains in output with `escalated`, `escalation_reason`, and `escalation_errors` for human review.
 
 **Output:** Validated DMN XML + `DecisionModelSummary` (with `id`, `name`, `inputs`, `outputs`, `source_cpg`, `category`, `modifies`, `source_location`).
 

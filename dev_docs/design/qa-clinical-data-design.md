@@ -93,6 +93,5 @@ The concept resolver is a fallback for when codes aren't provided. The ideal pat
 | Concept bridging gaps (80% on standard suite) | Low | Add terms to concept resolver as they're encountered. |
 | UACR/CKD staging classification | Low | Add clinical threshold classifiers for staging logic. |
 | Duration-based reclassification | Medium | "Acute (<4wk) → chronic (≥12wk)" — not yet implemented as a temporal primitive. |
-| Temporal primitives not in production executor | Medium | Blocked on GitHub #86 (temporal extraction metadata from cpg-ingester). The executor is ready to consume it but the wiring is not done. |
+| Temporal primitives not in production executor | Resolved | cpg-ingester now emits validated `DecisionVariable.extraction` metadata and the production DMN executor consumes it with audit provenance. |
 | LLM-assisted query plan → agent fallback | Low | Fixed in review (inverted boolean prevented agent from firing when query plan returned insufficient_data). |
-| Duration-based reclassification | Medium | "Acute (<4wk) → chronic (≥12wk)" — not yet implemented as a temporal primitive. |

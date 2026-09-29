@@ -4,7 +4,8 @@ import logging
 
 import mlflow
 
-from cpg_ingester.validators.dmn_syntax import validate_dmn_xml
+from cpg_ingester.validators.dmn_syntax import validate_dmn, validate_dmn_preflight
+from cpg_ingester.validators.dmn_schema import validate_dmn_schema
 
 logger = logging.getLogger(__name__)
 
@@ -18,9 +19,19 @@ def dmn_syntax_validator(state: dict) -> dict:
     name = item.get("name", "unknown")
 
     if not dmn_xml:
-        return {"syntax_errors": ["No DMN XML produced"]}
+        return {"syntax_errors": ["No DMN XML produced"], "syntax_warnings": []}
 
-    errors = validate_dmn_xml(dmn_xml)
+    preflight_errors = validate_dmn_preflight(dmn_xml)
+    if preflight_errors:
+        return {"syntax_errors": preflight_errors, "syntax_warnings": []}
+
+    # XSD validation follows cheap XML well-formedness and namespace checks.
+    # It yields precise element-order and structural feedback for the repair loop.
+    schema_errors = validate_dmn_schema(dmn_xml)
+    if schema_errors:
+        return {"syntax_errors": schema_errors, "syntax_warnings": []}
+
+    errors, warnings = validate_dmn(dmn_xml)
 
     if errors:
         logger.warning("DMN syntax validation failed for '%s': %d errors", name, len(errors))
@@ -29,4 +40,7 @@ def dmn_syntax_validator(state: dict) -> dict:
     else:
         logger.info("DMN syntax validation passed for '%s'", name)
 
-    return {"syntax_errors": errors}
+    for warning in warnings:
+        logger.warning("DMN syntax warning for '%s': %s", name, warning)
+
+    return {"syntax_errors": errors, "syntax_warnings": warnings}

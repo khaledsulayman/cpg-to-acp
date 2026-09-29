@@ -95,8 +95,18 @@ class TestBuildDependencyGraph:
         assert len(levels) == 1
         assert levels[0] == ["a"]
 
+    def test_chained_golden_models_have_two_execution_levels(self):
+        models = [
+            {"id": "treatment-recommendation", "modifies": ["monitoring-plan"]},
+            {"id": "monitoring-plan", "modifies": None},
+        ]
+        assert _build_dependency_graph(models) == [
+            ["treatment-recommendation"], ["monitoring-plan"]
+        ]
+
 
 class TestGuidelineResolver:
+    @patch("acp_writer.nodes.guideline_resolver.DECISION_ENGINE_URL", "http://decision-engine:8080")
     @patch("acp_writer.nodes.guideline_resolver.requests.get")
     def test_matches_hypertension_cpg(self, mock_get):
         metadata = _load_sample_metadata()
@@ -130,6 +140,7 @@ class TestGuidelineResolver:
         assert result["applicable_cpgs"] == []
         assert result["applicable_dmn_models"] == []
 
+    @patch("acp_writer.nodes.guideline_resolver.DECISION_ENGINE_URL", "http://decision-engine:8080")
     @patch("acp_writer.nodes.guideline_resolver.requests.get")
     def test_decision_engine_unavailable(self, mock_get):
         metadata = _load_sample_metadata()
@@ -158,6 +169,7 @@ class TestGuidelineResolver:
         result = guideline_resolver({})
         assert result["applicable_cpgs"] == []
 
+    @patch("acp_writer.nodes.guideline_resolver.DECISION_ENGINE_URL", "http://decision-engine:8080")
     @patch("acp_writer.nodes.guideline_resolver.requests.get")
     def test_pipeline_integration(self, mock_get):
         """Full pipeline with Condition Scanner + Guideline Resolver."""

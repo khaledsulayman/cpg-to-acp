@@ -45,8 +45,11 @@ def find_resources(bundle: dict, resource_type: str) -> list[dict]:
 
 
 @pytest.fixture(autouse=True)
-def clear_models():
+def clear_models(monkeypatch):
     """Clear dynamic models between tests."""
+    # Deployment validation is covered by test_dmn_validation.py. Keep the
+    # broad integration suite independent of a running decision-service.
+    monkeypatch.setattr("acp_writer.api._validate_dmn_with_engine", lambda _: None)
     _dynamic_models.clear()
     yield
     _dynamic_models.clear()
@@ -114,6 +117,19 @@ class TestDecisionModels:
             headers={"Content-Type": "application/xml"},
         )
         assert r.status_code == 400
+
+    def test_different_source_collision_requires_replace(self):
+        dmn_xml = load_dmn("treatment-recommendation.dmn")
+        first = client.post("/api/v1/decisions/models?source_cpg=CPG-A", content=dmn_xml,
+                            headers={"Content-Type": "application/xml"})
+        assert first.status_code == 201
+        collision = client.post("/api/v1/decisions/models?source_cpg=CPG-B", content=dmn_xml,
+                                headers={"Content-Type": "application/xml"})
+        assert collision.status_code == 409
+        replaced = client.post("/api/v1/decisions/models?source_cpg=CPG-B&replace=true", content=dmn_xml,
+                               headers={"Content-Type": "application/xml"})
+        assert replaced.status_code == 201
+        assert replaced.json()["source_cpg"] == "CPG-B"
 
 
 class TestCarePlanEndpoint:
