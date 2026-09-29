@@ -78,6 +78,7 @@ def _validate_review_result(result: dict, recommendations: list[dict]) -> dict:
             isinstance(issue, str) and issue.strip() for issue in issues
         ):
             raise ValueError(f"reviewer check {index} must include a list of non-blank string issues")
+        check_issue_severities = []
         for issue in issues:
             severity = _issue_severity(issue)
             if severity is None:
@@ -85,8 +86,16 @@ def _validate_review_result(result: dict, recommendations: list[dict]) -> dict:
                     f"reviewer check {index} issues must have a CRITICAL or MINOR tag "
                     "and a non-blank description"
                 )
+            check_issue_severities.append(severity)
             issue_severities.append(severity)
         failed_fields = [field for field in check_fields if not check[field]]
+        if (
+            ("content_faithful" in failed_fields or "type_correct" in failed_fields)
+            and "CRITICAL" not in check_issue_severities
+        ):
+            raise ValueError(
+                f"reviewer check {index}: {failed_fields} failed but no CRITICAL issue explains it"
+            )
         if failed_fields and not issues:
             raise ValueError(
                 f"reviewer check {index} reports failed fields {failed_fields} without issue evidence"

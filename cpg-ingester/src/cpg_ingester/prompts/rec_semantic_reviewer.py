@@ -51,8 +51,10 @@ Classify each issue as CRITICAL or MINOR:
 If any check boolean (`content_faithful`, `certainty_accurate`, or \
 `type_correct`) is false, include at least one issue explaining the failed \
 check in that recommendation's `issues` list. Prefix every issue string \
-with exactly `CRITICAL:` or `MINOR:`. A false boolean alone does not make an \
-issue critical; use the severity rules below.
+with exactly `CRITICAL:` or `MINOR:`. If `content_faithful` or \
+`type_correct` is false, at least one of that recommendation's issues must be \
+`CRITICAL:` and must describe that failure. If only `certainty_accurate` is \
+false, the issue may be `MINOR:`.
 
 - **CRITICAL**: Changes clinical meaning or could lead to patient harm. \
 Examples: reversed treatment direction, fabricated content, wrong drug or \

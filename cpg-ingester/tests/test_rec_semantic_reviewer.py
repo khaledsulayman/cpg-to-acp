@@ -29,7 +29,7 @@ MOCK_FAILED_RESPONSE = json.dumps({
             "content_faithful": False,
             "certainty_accurate": True,
             "type_correct": True,
-            "issues": ["MINOR: Content says 'must engage' but source says 'engage in at least' — language strengthened"],
+            "issues": ["CRITICAL: Content says 'must engage' but source says 'engage in at least' — language strengthened"],
         },
     ],
     "missing_recommendations": [
@@ -133,6 +133,54 @@ class TestRecSemanticReviewer:
                 id="critical-issue-flag-false",
             ),
             pytest.param(
+                _review_result(checks=[
+                    _check_result(
+                        "DASH Diet",
+                        content_faithful=False,
+                        issues=["MINOR: certainty grade is more specific than the source"],
+                    ),
+                    _check_result("Physical Activity"),
+                ]),
+                ("no CRITICAL issue explains it",),
+                id="content-failure-with-minor-certainty-issue",
+            ),
+            pytest.param(
+                _review_result(checks=[
+                    _check_result("DASH Diet"),
+                    _check_result(
+                        "Physical Activity",
+                        type_correct=False,
+                        issues=["MINOR: title wording"],
+                    ),
+                ]),
+                ("no CRITICAL issue explains it",),
+                id="type-failure-with-minor-issue",
+            ),
+            pytest.param(
+                _review_result(checks=[
+                    _check_result(
+                        "DASH Diet",
+                        content_faithful=False,
+                        issues=["MINOR: a", "MINOR: b"],
+                    ),
+                    _check_result("Physical Activity"),
+                ]),
+                ("no CRITICAL issue explains it",),
+                id="content-failure-with-multiple-minor-issues",
+            ),
+            pytest.param(
+                _review_result(checks=[
+                    _check_result(
+                        "DASH Diet",
+                        content_faithful=False,
+                        issues=["CRITICAL: wrong dose"],
+                    ),
+                    _check_result("Physical Activity"),
+                ]),
+                ("discrepancies_found must agree",),
+                id="content-failure-critical-flag-false",
+            ),
+            pytest.param(
                 _review_result(missing_recommendations=["alcohol"]),
                 (),
                 id="missing-recommendation-flag-false",
@@ -228,6 +276,40 @@ class TestRecSemanticReviewer:
                 ], discrepancies_found=True, discrepancies=["reversed direction"]),
                 ["reversed direction"],
                 id="lowercase-critical-with-flag-true",
+            ),
+            pytest.param(
+                _review_result(checks=[
+                    _check_result("DASH Diet", content_faithful=False,
+                                  issues=["CRITICAL: reversed direction", "MINOR: grade"]),
+                    _check_result("Physical Activity"),
+                ], discrepancies_found=True, discrepancies=["reversed direction"]),
+                ["reversed direction"],
+                id="content-failure-critical-with-additional-minor-flag-true",
+            ),
+            pytest.param(
+                _review_result(checks=[
+                    _check_result("DASH Diet"),
+                    _check_result(
+                        "Physical Activity",
+                        certainty_accurate=False,
+                        issues=["MINOR: ungraded in source"],
+                    ),
+                ]),
+                [],
+                id="certainty-only-failure-minor-issue",
+            ),
+            pytest.param(
+                _review_result(checks=[
+                    _check_result("DASH Diet"),
+                    _check_result(
+                        "Physical Activity",
+                        type_correct=False,
+                        issues=["CRITICAL: labelled pharmacological but is lifestyle"],
+                    ),
+                ], discrepancies_found=True,
+                    discrepancies=["Wrong recommendation type"]),
+                ["Wrong recommendation type"],
+                id="type-failure-critical-with-flag-true",
             ),
             pytest.param(
                 _review_result(checks=[
@@ -371,11 +453,14 @@ class TestRecSemanticReviewer:
     def test_reasks_on_invalid_schema_then_accepts_valid_reply(self):
         mock_llm = MagicMock()
         mock_llm.invoke = MagicMock(side_effect=[
-            MagicMock(content=json.dumps({
-                "discrepancies_found": False,
-                "discrepancies": [],
-                "missing_recommendations": [],
-            })),
+            MagicMock(content=json.dumps(_review_result(checks=[
+                _check_result(
+                    "DASH Diet",
+                    content_faithful=False,
+                    issues=["MINOR: certainty grade is more specific than the source"],
+                ),
+                _check_result("Physical Activity"),
+            ]))),
             MagicMock(content=MOCK_PASSED_RESPONSE),
         ])
 
@@ -391,8 +476,9 @@ class TestRecSemanticReviewer:
                 result = rec_semantic_reviewer(state)
 
         assert result["semantic_discrepancies"] == []
-        assert "schema" in mock_llm.invoke.call_args_list[1].args[0][-1]["content"].lower()
-        assert "checks" in mock_llm.invoke.call_args_list[1].args[0][-1]["content"]
+        retry_prompt = mock_llm.invoke.call_args_list[1].args[0][-1]["content"]
+        assert "schema" in retry_prompt.lower()
+        assert "no CRITICAL issue explains it" in retry_prompt
 
     def test_invalid_json_shape_after_reask_escalates(self):
         mock_llm = MagicMock()
@@ -474,7 +560,7 @@ class TestRecSemanticReviewer:
 
     @pytest.mark.parametrize(
         ("issues", "retry_error"),
-        [([], "without issue evidence"), (["Wrong dose"], "CRITICAL or MINOR tag")],
+        [([], "no CRITICAL issue explains it"), (["Wrong dose"], "CRITICAL or MINOR tag")],
         ids=["no-issue", "untagged-issue"],
     )
     def test_failed_check_without_valid_issue_evidence_escalates_after_reask(
