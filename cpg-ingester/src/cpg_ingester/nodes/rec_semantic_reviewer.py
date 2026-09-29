@@ -59,6 +59,17 @@ def _validate_review_result(result: dict, recommendation_count: int) -> dict:
     if not isinstance(missing, list) or not all(isinstance(item, str) for item in missing):
         raise ValueError("reviewer response must include a list of string missing_recommendations")
 
+    has_critical_evidence = bool(missing) or any(
+        issue.strip().upper().startswith("CRITICAL:")
+        for check in checks
+        for issue in check["issues"]
+    )
+    if discrepancies_found != has_critical_evidence:
+        raise ValueError(
+            "discrepancies_found must agree with CRITICAL check issues and "
+            "missing_recommendations"
+        )
+
     return result
 
 

@@ -5,6 +5,8 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from cpg_ingester.nodes.rec_semantic_reviewer import rec_semantic_reviewer
 
 
@@ -207,6 +209,62 @@ class TestRecSemanticReviewer:
         assert result["force_escalate"] is True
         assert result["escalation_reason"] == "reviewer-unparseable"
         assert "valid JSON" in result["semantic_discrepancies"][0]
+
+    @pytest.mark.parametrize(
+        ("critical_issues", "missing_recommendations"),
+        [
+            (["CRITICAL: Wrong dose could harm the patient"], []),
+            ([], ["An alcohol limitation recommendation is missing"]),
+            (["CRITICAL: Wrong dose could harm the patient"],
+             ["An alcohol limitation recommendation is missing"]),
+        ],
+        ids=["critical-check-issue", "missing-recommendation", "both"],
+    )
+    def test_critical_evidence_with_false_discrepancy_flag_escalates_after_reask(
+        self, critical_issues, missing_recommendations,
+    ):
+        contradictory_response = json.dumps({
+            "checks": [{
+                "recommendation_title": "DASH Diet",
+                "content_faithful": True,
+                "certainty_accurate": True,
+                "type_correct": True,
+                "issues": [],
+            }, {
+                "recommendation_title": "Physical Activity",
+                "content_faithful": False,
+                "certainty_accurate": True,
+                "type_correct": True,
+                "issues": critical_issues,
+            }],
+            "missing_recommendations": missing_recommendations,
+            "discrepancies_found": False,
+            "summary": "",
+            "discrepancies": [],
+        })
+        mock_llm = MagicMock()
+        mock_llm.invoke = MagicMock(side_effect=[
+            MagicMock(content=contradictory_response),
+            MagicMock(content=contradictory_response),
+        ])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = {
+                "recommendations": SAMPLE_RECS,
+                "source_pages": "source text",
+                "output_dir": tmpdir,
+                "review_count": 0,
+                "items": [{"section": "3.4"}],
+            }
+            with patch("cpg_ingester.nodes.rec_semantic_reviewer.get_llm", return_value=mock_llm):
+                result = rec_semantic_reviewer(state)
+
+        assert result["force_escalate"] is True
+        assert result["escalation_reason"] == "reviewer-unparseable"
+        assert result["semantic_discrepancies"]
+        assert mock_llm.invoke.call_count == 2
+        retry_prompt = mock_llm.invoke.call_args_list[1].args[0][-1]["content"]
+        assert "discrepancies_found must agree" in retry_prompt
 
     def test_discrepancy_flag_requires_discrepancy_details(self):
         invalid_response = json.dumps({
