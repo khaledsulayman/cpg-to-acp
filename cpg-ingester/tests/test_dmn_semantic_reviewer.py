@@ -110,6 +110,23 @@ class TestDMNSemanticReviewer:
             assert result["escalation_reason"] == "no-source-text"
             assert result["semantic_discrepancies"]
 
+    def test_whitespace_only_source_pages_escalate_without_review(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state = {
+                "dmn_xml": "<definitions/>",
+                "item": {"name": "Test"},
+                "source_pages": " \n\t ",
+                "output_dir": tmpdir,
+                "semantic_retry_count": 0,
+            }
+            with patch("cpg_ingester.nodes.dmn_semantic_reviewer.get_llm") as mock_get_llm:
+                result = dmn_semantic_reviewer(state)
+
+        assert result["force_escalate"] is True
+        assert result["escalation_reason"] == "no-source-text"
+        assert result["semantic_discrepancies"]
+        mock_get_llm.assert_not_called()
+
     def test_no_dmn_xml_returns_error(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             state = {

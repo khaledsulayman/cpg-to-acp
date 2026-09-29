@@ -3,6 +3,7 @@
 import json
 import logging
 import time
+from collections import Counter
 
 import mlflow
 from cpg_contracts import content_to_text, get_llm
@@ -16,10 +17,29 @@ from cpg_ingester.prompts.rec_semantic_reviewer import (
 logger = logging.getLogger(__name__)
 
 
-def _validate_review_result(result: dict, recommendation_count: int) -> dict:
+def _issue_severity(issue: str) -> str | None:
+    severity, separator, description = issue.partition(":")
+    if not separator or not description.strip():
+        return None
+    severity = severity.strip().upper()
+    return severity if severity in {"CRITICAL", "MINOR"} else None
+
+
+def _validate_review_result(result: dict, recommendations: list[dict]) -> dict:
     """Validate the reviewer contract before using its result for routing."""
     if not isinstance(result, dict):
         raise ValueError("reviewer response must be a JSON object")
+
+    if not isinstance(recommendations, list):
+        raise ValueError("recommendations must be a list")
+    recommendation_titles = Counter()
+    for index, recommendation in enumerate(recommendations):
+        if not isinstance(recommendation, dict):
+            raise ValueError(f"recommendation {index} must be an object")
+        title = recommendation.get("title")
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError(f"recommendation {index} must include a non-blank title")
+        recommendation_titles[" ".join(title.split()).lower()] += 1
 
     discrepancies_found = result.get("discrepancies_found")
     if not isinstance(discrepancies_found, bool):
@@ -27,9 +47,10 @@ def _validate_review_result(result: dict, recommendation_count: int) -> dict:
 
     discrepancies = result.get("discrepancies")
     if not isinstance(discrepancies, list) or not all(
-        isinstance(discrepancy, str) for discrepancy in discrepancies
+        isinstance(discrepancy, str) and discrepancy.strip()
+        for discrepancy in discrepancies
     ):
-        raise ValueError("reviewer response must include a list of string discrepancies")
+        raise ValueError("reviewer response must include a list of non-blank string discrepancies")
     if discrepancies_found and not discrepancies:
         raise ValueError("discrepancies must not be empty when discrepancies_found is true")
     if not discrepancies_found and discrepancies:
@@ -38,32 +59,56 @@ def _validate_review_result(result: dict, recommendation_count: int) -> dict:
     checks = result.get("checks")
     if not isinstance(checks, list):
         raise ValueError("reviewer response must include a checks list")
-    if len(checks) != recommendation_count:
-        raise ValueError(
-            "reviewer response must include one check per recommendation "
-            f"(expected {recommendation_count}, got {len(checks)})"
-        )
+    check_titles = Counter()
+    issue_severities = []
     for index, check in enumerate(checks):
         if not isinstance(check, dict):
             raise ValueError(f"reviewer check {index} must be an object")
-        if not isinstance(check.get("recommendation_title"), str):
-            raise ValueError(f"reviewer check {index} must include a recommendation_title")
-        for field in ("content_faithful", "certainty_accurate", "type_correct"):
+        title = check.get("recommendation_title")
+        if not isinstance(title, str) or not title.strip():
+            raise ValueError(f"reviewer check {index} must include a non-blank recommendation_title")
+        check_titles[" ".join(title.split()).lower()] += 1
+
+        check_fields = ("content_faithful", "certainty_accurate", "type_correct")
+        for field in check_fields:
             if not isinstance(check.get(field), bool):
                 raise ValueError(f"reviewer check {index} must include boolean {field}")
         issues = check.get("issues")
-        if not isinstance(issues, list) or not all(isinstance(issue, str) for issue in issues):
-            raise ValueError(f"reviewer check {index} must include a list of string issues")
+        if not isinstance(issues, list) or not all(
+            isinstance(issue, str) and issue.strip() for issue in issues
+        ):
+            raise ValueError(f"reviewer check {index} must include a list of non-blank string issues")
+        for issue in issues:
+            severity = _issue_severity(issue)
+            if severity is None:
+                raise ValueError(
+                    f"reviewer check {index} issues must have a CRITICAL or MINOR tag "
+                    "and a non-blank description"
+                )
+            issue_severities.append(severity)
+        failed_fields = [field for field in check_fields if not check[field]]
+        if failed_fields and not issues:
+            raise ValueError(
+                f"reviewer check {index} reports failed fields {failed_fields} without issue evidence"
+            )
+
+    missing_titles = list((recommendation_titles - check_titles).elements())
+    extra_titles = list((check_titles - recommendation_titles).elements())
+    if missing_titles or extra_titles:
+        raise ValueError(
+            "reviewer check titles must match recommendation titles; "
+            f"missing titles: {missing_titles}; extra titles: {extra_titles}"
+        )
 
     missing = result.get("missing_recommendations")
-    if not isinstance(missing, list) or not all(isinstance(item, str) for item in missing):
-        raise ValueError("reviewer response must include a list of string missing_recommendations")
+    if not isinstance(missing, list) or not all(
+        isinstance(item, str) and item.strip() for item in missing
+    ):
+        raise ValueError(
+            "reviewer response must include a list of non-blank string missing_recommendations"
+        )
 
-    has_critical_evidence = bool(missing) or any(
-        issue.strip().upper().startswith("CRITICAL:")
-        for check in checks
-        for issue in check["issues"]
-    )
+    has_critical_evidence = bool(missing) or "CRITICAL" in issue_severities
     if discrepancies_found != has_critical_evidence:
         raise ValueError(
             "discrepancies_found must agree with CRITICAL check issues and "
@@ -86,7 +131,7 @@ def rec_semantic_reviewer(state: dict) -> dict:
     if not recommendations:
         return {"semantic_discrepancies": ["No recommendations to review"]}
 
-    if not source_pages:
+    if not source_pages.strip():
         logger.warning("No source pages for semantic review — escalating")
         return {
             "semantic_discrepancies": [
@@ -115,7 +160,7 @@ def rec_semantic_reviewer(state: dict) -> dict:
 
     try:
         result = _validate_review_result(
-            _parse_llm_json(content_to_text(response.content)), len(recommendations)
+            _parse_llm_json(content_to_text(response.content)), recommendations
         )
     except json.JSONDecodeError:
         logger.warning("Semantic review for recommendations was not valid JSON — re-asking")
@@ -135,7 +180,7 @@ def rec_semantic_reviewer(state: dict) -> dict:
 
     try:
         result = _validate_review_result(
-            _parse_llm_json(content_to_text(response.content)), len(recommendations)
+            _parse_llm_json(content_to_text(response.content)), recommendations
         )
     except (json.JSONDecodeError, ValueError):
         logger.warning("Recommendation semantic review still invalid after a re-ask — escalating")

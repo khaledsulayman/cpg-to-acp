@@ -55,7 +55,7 @@ def dmn_semantic_reviewer(state: dict) -> dict:
     # No source text means there is nothing to verify the model against. Retrying
     # the creator will not conjure source text, so this is a hard escalation, not
     # a silent pass and not a retry.
-    if not source_pages:
+    if not source_pages.strip():
         logger.warning("No source text for semantic review of '%s' — escalating", name)
         return {
             "semantic_discrepancies": [
