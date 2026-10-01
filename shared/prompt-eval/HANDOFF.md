@@ -1,8 +1,8 @@
 # Consumer handoff: interface 1.0.0
 
 The implementation is on branch `feat/prompt-eval-infrastructure`, based on
-`93d8bed` (merge of Carewright PR #187). The implementation commit is the commit
-that first adds this file; record its full Git SHA when consuming the interface.
+`93d8bed` (merge of Carewright PR #187). Frozen implementation commit: `28cb003f40b2a7066f3f588bc9f7d3e442b4bf62`.
+Record this full Git SHA when consuming the interface.
 The schema checksums in `INTERFACE.sha256` are the independent contract fingerprint.
 
 The [package README](README.md) provides installation, exact development commands,
@@ -19,7 +19,9 @@ retention requirements, and the coordinator/adapter trust boundaries.
   with matching SHA-256 for every artifact. Managed route:
   `https://mlflow-redhat-ods-applications.apps.rosa.agentic-mcp.jolf.p3.openshiftapps.com/mlflow`.
   Workspace: `ksulayma-cpg-to-acp`. Traces target experiment 70 rather than the
-  default experiment; final smoke receipt is retained outside Git under `working/live-smoke/`.
+  default experiment; the final run verified **33 artifacts** without trace
+  destination warnings. [Verification metadata](VERIFICATION.json) records its
+  external receipt and implementation commit. Raw artifacts remain outside Git.
 - Fresh read-only review identified raw-string redaction, rejected-output accounting,
   and holdout-overlap issues. Regression tests reproduced each issue and now pass.
 
