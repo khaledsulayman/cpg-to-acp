@@ -6,7 +6,7 @@ A multi-agent system that transforms Clinical Practice Guidelines (CPGs) into pa
 
 CPGs are published as narrative documents (PDFs, sometimes hundreds of pages) containing decision logic, recommendations, dosing tables, risk assessments, and care pathways. Today, translating a CPG into actionable care for a specific patient is manual, error-prone, and depends on individual clinician recall. This project bridges that gap with AI while keeping clinical decisions deterministic, auditable, and governed.
 
-**See the project website:** [https://samschifman.github.io/carewright/](https://samschifman.github.io/carewright/])
+**See the project website:** [https://samschifman.github.io/carewright/](https://samschifman.github.io/carewright/)
 
 ## Architecture
 
