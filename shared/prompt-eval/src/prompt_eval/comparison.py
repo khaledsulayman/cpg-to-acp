@@ -72,6 +72,16 @@ def compare(envelopes, varying="prompt"):
     first = comparison_key(envelopes[0].config, varying)
     if any(comparison_key(e.config, varying) != first for e in envelopes[1:]):
         raise ComparisonError("Unequal repetitions or incompatible frozen revisions/configuration")
+    masks = {
+        stage.stage: [{c.case_id for c in rep.cases if c.usable}
+                      for rep in stage.repetitions]
+        for stage in envelopes[0].stages
+    }
+    for env in envelopes[1:]:
+        for stage in env.stages:
+            if [{c.case_id for c in rep.cases if c.usable}
+                for rep in stage.repetitions] != masks[stage.stage]:
+                raise ComparisonError("Stage usable case IDs differ between runs")
     stages = {}
     for env in envelopes:
         for stage in env.stages:
@@ -90,6 +100,8 @@ def compare(envelopes, varying="prompt"):
             previous = stages.setdefault(stage.stage, [])
             if previous and set(previous[0]["metrics"]) != keys:
                 raise ComparisonError("Stage metric keys differ between runs")
+            if previous and set(previous[0]["aggregate"]["metrics"]) != set(stage.aggregate.metrics):
+                raise ComparisonError("Stage aggregate metric keys differ between runs")
             previous.append(
                 {
                     "run_id": env.run_id,

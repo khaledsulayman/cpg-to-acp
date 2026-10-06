@@ -231,3 +231,21 @@ usable/unusable cases, reported output counts, unaccounted outputs, cases with
 unknown accounting, attempts, and failed attempts. Rejected records retain valid
 nonnegative counts even when full contract validation fails. A recovered
 retry remains visible even when the final case is usable.
+
+### Review compatibility safeguards
+
+Comparisons (including release creation) require identical usable case IDs for
+each corresponding stage and repetition, and identical aggregate metric key sets
+across runs. A partial run remains inspectable; mismatched subsets cannot be
+presented as comparable results.
+
+Holdout protection records each source digest separately, so extending or
+rebundling a case cannot hide a previously revealed source. A manifest must not
+share source digests between holdout and tuning or validity-only cases. This is
+conservative: sections from the same PDF require distinct source units if used
+across splits, and adapters remain responsible for declaring their provenance.
+
+Registries from the initial implementation containing legacy bundle fingerprints
+fail closed. Recover individual revealed source digests from preserved campaign
+evidence and migrate the history under operator supervision before continuing.
+Do not delete the registry or discard reveal history to bypass this guard.

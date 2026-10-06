@@ -2,7 +2,8 @@
 
 The implementation is on branch `feat/prompt-eval-infrastructure`, based on
 `93d8bed` (merge of Carewright PR #187). Frozen implementation commit: `28cb003f40b2a7066f3f588bc9f7d3e442b4bf62`.
-Record this full Git SHA when consuming the interface.
+That revision identifies the original live smoke evidence. When consuming the
+interface, pin the actual PR head or merged revision, including subsequent review fixes.
 The schema checksums in `INTERFACE.sha256` are the independent contract fingerprint.
 
 The [package README](README.md) provides installation, exact development commands,
@@ -12,7 +13,8 @@ retention requirements, and the coordinator/adapter trust boundaries.
 
 ## Verified behavior
 
-- 56 offline tests pass; Ruff passes.
+- 65 offline tests pass after the review fixes; Ruff passes. The recorded live
+  verification remains evidence from the original implementation revision.
 - The installed `prompt-eval` entry point runs both opaque synthetic stages,
   verifies their immutable artifacts, exports them, and verifies the export offline.
 - Actual RHOAI upload/download verified a canary and the complete two-stage run
@@ -55,4 +57,10 @@ into the recommendation benchmark.
 - The RHOAI volume's `Delete` reclaim policy requires operator retention/backups;
   verified exports provide offline copies.
 
-Issue creation/updates and recommendation-specific implementation are subsequent work.
+Infrastructure tracking: GitHub #190 / RHAIENG-7748; recommendation evaluation
+remains separate in GitHub #34 / RHAIENG-6456.
+
+Review fixes track individual holdout source digests, reject cross-split overlap,
+require matching usable-case subsets per repetition, and validate aggregate metric
+keys. Legacy registries with revealed bundle fingerprints fail closed; see the
+[user guide](../../docs/prompt-evaluation.md#review-compatibility-safeguards).

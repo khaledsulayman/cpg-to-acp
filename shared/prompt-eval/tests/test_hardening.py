@@ -233,7 +233,7 @@ def test_changed_split_manifest_cannot_reuse_dataset_digest(tmp_path, config):
     registry = Registry(tmp_path / "registry.db")
     registry.reserve("base", config)
     registry.finish("base")
-    data = config.model_dump()
+    data = config.model_dump(mode="json")
     data["cases"][1]["split"] = "tuning"
     with pytest.raises(RegistryError):
         registry.reserve("changed", RunConfig.model_validate(data))
@@ -290,7 +290,7 @@ def test_rejected_raw_counts_are_preserved_and_unaccounted_outputs_visible(tmp_p
     assert counts["unaccounted_outputs"] == 2
 
 
-@pytest.mark.parametrize("change", ["add", "rename-corpus", "rename-digest-key"])
+@pytest.mark.parametrize("change", ["add", "rename-corpus", "rename-digest-key", "extend", "rebundle"])
 def test_any_revealed_holdout_source_overlap_is_rejected(tmp_path, config, change):
     from prompt_eval.models import RunConfig
     from prompt_eval.registry import Registry, RegistryError
@@ -304,7 +304,7 @@ def test_any_revealed_holdout_source_overlap_is_rejected(tmp_path, config, chang
     registry.reserve("held", held)
     registry.reveal(held, release, "held")
     registry.finish("held")
-    data = config.model_dump()
+    data = config.model_dump(mode="json")
     data["dataset"] = {"version": "new", "digest": "d" * 64}
     if change == "add":
         data["cases"] = [
@@ -316,9 +316,36 @@ def test_any_revealed_holdout_source_overlap_is_rejected(tmp_path, config, chang
                 "source_digests": {"source": "e" * 64},
             },
         ]
+    elif change in ("extend", "rebundle"):
+        data["cases"][1]["source_digests"]["fresh"] = "e" * 64
+        if change == "rebundle":
+            data["cases"][1]["source_digests"] = {"fresh": "e" * 64}
+            data["cases"].append({**data["cases"][1], "case_id": "rebundled",
+                                  "source_digests": {"old": "b" * 64, "new": "f" * 64}})
     elif change == "rename-corpus":
         data["cases"][1]["corpus"] = "renamed"
     else:
         data["cases"][1]["source_digests"] = {"renamed-key": "b" * 64}
     with pytest.raises(RegistryError):
         registry.reserve("new", RunConfig.model_validate(data))
+
+@pytest.mark.parametrize("split", ["tuning", "validity-only"])
+def test_holdout_cannot_share_source_with_other_splits(tmp_path, config, split):
+    from prompt_eval.models import RunConfig
+    from prompt_eval.registry import Registry, RegistryError
+
+    data = config.model_dump(mode="json")
+    data["cases"].append({**data["cases"][1], "case_id": "exposed", "split": split,
+                          "source_digests": {"old": "b" * 64, "new": "c" * 64}})
+    with pytest.raises(RegistryError, match="overlap"):
+        Registry(tmp_path / "registry.db").reserve("bad", RunConfig.model_validate(data))
+
+
+def test_legacy_revealed_bundle_registry_fails_closed(tmp_path, config):
+    from prompt_eval.registry import Registry, RegistryError
+
+    registry = Registry(tmp_path / "registry.db")
+    with registry.connect() as db:
+        db.execute("INSERT INTO revealed_sources VALUES (?,?,?)", ("legacy", "dataset", "stamp"))
+    with pytest.raises(RegistryError, match="legacy"):
+        registry.reserve("new", config)

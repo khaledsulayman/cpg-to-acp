@@ -77,3 +77,51 @@ def test_release_rejects_development_runs(tmp_path, config):
     env = envelope(tmp_path, config)
     with pytest.raises(ComparisonError):
         make_release(env, env)
+
+@pytest.mark.parametrize("official", [False, True])
+def test_comparison_rejects_different_usable_case_masks(tmp_path, config, official):
+    from prompt_eval.comparison import ComparisonError, compare, make_release
+    from prompt_eval.models import CaseResult, RunConfig
+    from prompt_eval.runner import run
+
+    data = config.model_dump(mode="json")
+    data["cases"].append({**data["cases"][0], "case_id": "two", "source_digests": {"source": "c" * 64}})
+    cfg = RunConfig.model_validate(data)
+
+    class Subset(Adapter):
+        def __init__(self, usable_id):
+            self.usable_id = usable_id
+
+        def execute(self, case, repetition, capture):
+            return CaseResult(case_id=case.case_id, usable=case.case_id == self.usable_id,
+                              metrics={"quality": 1})
+
+    envs = []
+    for i, usable_id in enumerate(("one", "two")):
+        variant = ("baseline", "tuned")[i] if official else "development"
+        current = cfg.model_copy(update={"variant": variant})
+        registry, store = setup(tmp_path / str(i), current, official=official)
+        envs.append(read(store, run(current, {"extractor": Subset(usable_id)}, store, registry)).model_copy(update={"run_id": str(i)}))
+    assert compare([envs[0], envs[0].model_copy(update={"run_id": "matching"})])["stages"]
+    with pytest.raises(ComparisonError, match="usable"):
+        compare(envs)
+    if official:
+        with pytest.raises(ComparisonError, match="usable"):
+            make_release(*envs)
+
+
+def test_comparison_accepts_matching_usable_masks(tmp_path, config):
+    from prompt_eval.comparison import compare
+    env = envelope(tmp_path, config)
+    assert compare([env, env.model_copy(update={"run_id": "other"})])["stages"]
+
+
+def test_comparison_rejects_different_aggregate_metric_keys(tmp_path, config):
+    from prompt_eval.comparison import ComparisonError, compare
+    from prompt_eval.models import StageSummary
+
+    env = envelope(tmp_path, config)
+    other = env.model_copy(deep=True, update={"run_id": "other"})
+    other = other.model_copy(update={"stages": (other.stages[0].model_copy(update={"aggregate": StageSummary(metrics={"different": 1})}),)})
+    with pytest.raises(ComparisonError, match="aggregate"):
+        compare([env, other])

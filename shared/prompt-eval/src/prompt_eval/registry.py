@@ -34,7 +34,8 @@ def holdout_digest(config):
 
 def holdout_sources(config):
     # IDs, corpus labels, ordering and digest-key aliases do not change source content.
-    return {digest(sorted(c.source_digests.values())) for c in config.cases if c.split == "holdout"}
+    return {source for c in config.cases if c.split == "holdout"
+            for source in c.source_digests.values()}
 
 
 class Registry:
@@ -48,6 +49,8 @@ class Registry:
                     digest TEXT PRIMARY KEY, version TEXT NOT NULL, manifest TEXT NOT NULL,
                     holdout TEXT NOT NULL, release TEXT, revealed_at TEXT);
                 CREATE TABLE IF NOT EXISTS revealed_sources (
+                    fingerprint TEXT PRIMARY KEY, dataset TEXT NOT NULL, revealed_at TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS revealed_source_digests (
                     fingerprint TEXT PRIMARY KEY, dataset TEXT NOT NULL, revealed_at TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS versions (
                     experiment TEXT, version TEXT, digest TEXT,
@@ -72,8 +75,21 @@ class Registry:
             db.close()
 
     @traced
+    def check_sources(self, db, config):
+        if db.execute("SELECT 1 FROM revealed_sources LIMIT 1").fetchone():
+            raise RegistryError(
+                "Unsafe legacy bundle fingerprints: restore individual revealed source "
+                "digests from campaign evidence before continuing; do not discard history"
+            )
+        exposed = {source for c in config.cases if c.split != "holdout"
+                   for source in c.source_digests.values()}
+        if holdout_sources(config) & exposed:
+            raise RegistryError("Holdout source overlap with tuning or validity-only cases")
+
+    @traced
     def reserve(self, run_id, config):
         with self.connect() as db:
+            self.check_sources(db, config)
             row = db.execute(
                 "SELECT digest FROM versions WHERE experiment=? AND version=?",
                 (config.experiment_id, config.dataset.version),
@@ -97,7 +113,7 @@ class Registry:
                 raise RegistryError("Previously revealed holdout cannot be reused")
             if any(
                 db.execute(
-                    "SELECT 1 FROM revealed_sources WHERE fingerprint=?", (source,)
+                    "SELECT 1 FROM revealed_source_digests WHERE fingerprint=?", (source,)
                 ).fetchone()
                 for source in holdout_sources(config)
             ):
@@ -173,6 +189,7 @@ class Registry:
         if not all(required):
             raise RegistryError("Holdout configuration differs from frozen release")
         with self.connect() as db:
+            self.check_sources(db, config)
             owner = db.execute(
                 "SELECT config FROM runs WHERE id=? AND dataset=? AND active=1",
                 (run_id, config.dataset.digest),
@@ -186,14 +203,14 @@ class Registry:
                 raise RegistryError("Release is missing, altered, or already revealed")
             if any(
                 db.execute(
-                    "SELECT 1 FROM revealed_sources WHERE fingerprint=?", (source,)
+                    "SELECT 1 FROM revealed_source_digests WHERE fingerprint=?", (source,)
                 ).fetchone()
                 for source in holdout_sources(config)
             ):
                 raise RegistryError("Previously revealed holdout source cannot be reused")
             stamp = now()
             db.executemany(
-                "INSERT INTO revealed_sources VALUES (?,?,?)",
+                "INSERT INTO revealed_source_digests VALUES (?,?,?)",
                 [(source, config.dataset.digest, stamp) for source in holdout_sources(config)],
             )
             db.execute(
